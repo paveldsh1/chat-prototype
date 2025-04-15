@@ -216,8 +216,8 @@ export default function Home() {
       </div>
 
       {/* Область сообщений */}
-      <div className="flex-1 flex flex-col">
-        <div className="p-4 border-b">
+      <div className="flex-1 flex flex-col h-screen">
+        <div className="p-4 border-b bg-white sticky top-0 z-10">
           <h1 className="text-xl font-bold">
             {selectedChat 
               ? chats.find(c => c.id === selectedChat)?.username 
@@ -225,8 +225,8 @@ export default function Home() {
           </h1>
         </div>
         
-        <ScrollArea className="flex-1 p-4">
-          <div className="space-y-4">
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4 space-y-4">
             {loading && !messages.length ? (
               <div className="text-center p-4">Загрузка сообщений...</div>
             ) : messages.length === 0 ? (
@@ -341,9 +341,9 @@ export default function Home() {
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
-        <div className="p-4 border-t">
+        <div className="sticky bottom-0 p-4 border-t bg-white mt-auto">
           <div className="flex gap-2">
             <Input
               value={newMessage}
