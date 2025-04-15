@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { getChats, getChatMessages, sendMessage, checkAuth } from "@/lib/onlyfans-api";
 import type { Chat, Message, AccountInfo } from "@/lib/onlyfans-api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,6 +22,16 @@ export default function Home() {
   const [authChecking, setAuthChecking] = useState(true);
   const [initializationProgress, setInitializationProgress] = useState(0);
   const [messageCache, setMessageCache] = useState<Record<number, Message[]>>({});
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // Скролл при добавлении новых сообщений
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   // Проверка авторизации и загрузка данных
   useEffect(() => {
@@ -356,6 +366,7 @@ export default function Home() {
                     </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} /> {/* Якорь для скролла */}
               </div>
             )}
           </div>

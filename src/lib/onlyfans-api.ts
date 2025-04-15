@@ -166,18 +166,47 @@ export async function getChats(): Promise<Chat[]> {
 
 export async function getChatMessages(chatId: string): Promise<Message[]> {
   try {
-    const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
+    let allMessages: Message[] = [];
+    let offset = 0;
+    const limit = 50; // Стандартный лимит API
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await fetch(`/api/onlyfans/chats/${chatId}/messages?limit=${limit}&offset=${offset}`);
+      const data = await handleApiResponse<{ list: any[], hasMore: boolean }>(response);
+      
+      if (!data.list || !Array.isArray(data.list)) {
+        throw new Error('Invalid response format');
       }
-    });
-    return handleApiResponse<Message[]>(response);
+
+      const messages = data.list.map(msg => ({
+        id: msg.id,
+        text: msg.text.replace(/<[^>]*>/g, ''),
+        fromUser: msg.fromUser.id !== parseInt(chatId),
+        timestamp: msg.createdAt,
+        isNew: msg.isNew,
+        isFree: msg.isFree,
+        price: msg.price,
+        media: msg.media?.map((m: any) => ({
+          id: m.id,
+          type: m.type,
+          url: m.files?.full?.url || m.url || ''
+        })) || []
+      }));
+
+      allMessages = [...allMessages, ...messages];
+      
+      if (!data.hasMore || messages.length < limit) {
+        hasMore = false;
+      } else {
+        offset += limit;
+      }
+    }
+
+    return allMessages;
   } catch (error) {
-    console.error('API Error:', error);
-    throw error instanceof Error 
-      ? error 
-      : new Error('Failed to fetch messages. Please check your connection.');
+    console.error('Failed to fetch messages:', error);
+    throw error;
   }
 }
 

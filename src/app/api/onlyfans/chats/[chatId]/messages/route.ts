@@ -8,13 +8,17 @@ export async function GET(
   { params }: { params: { chatId: string } }
 ) {
   try {
+    const url = new URL(request.url);
+    const limit = url.searchParams.get('limit') || '50';
+    const offset = url.searchParams.get('offset') || '0';
+
     const response = await fetch(
-      `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/chats/${params.chatId}/messages`,
+      `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/chats/${params.chatId}/messages?limit=${limit}&offset=${offset}`,
       {
         headers: {
           'Authorization': `Bearer ${API_KEY}`,
           'Accept': 'application/json',
-        },
+        }
       }
     );
 
@@ -28,7 +32,7 @@ export async function GET(
     const messages = rawData.data.list.map((msg: any) => ({
       id: msg.id,
       text: msg.text.replace(/<[^>]*>/g, ''), // Удаляем HTML теги
-      fromUser: msg.fromUser.id !== parseInt(params.chatId), // Инвертируем логику
+      fromUser: msg.fromUser.id === parseInt(params.chatId),
       timestamp: msg.createdAt,
       isNew: msg.isNew,
       isFree: msg.isFree,
@@ -40,7 +44,10 @@ export async function GET(
       })) || []
     }));
 
-    return NextResponse.json(messages);
+    return NextResponse.json({
+      list: messages,
+      hasMore: rawData.data.hasMore || false
+    });
   } catch (error) {
     console.error('Error fetching messages:', error);
     return NextResponse.json(
