@@ -222,21 +222,6 @@ export default function Home() {
               ))}
             </div>
           </div>
-          
-          {/* Добавим отладочную консоль для исследования проблемы */}
-          <details className="mt-2 text-xs">
-            <summary className="font-bold cursor-pointer">Расширенная отладочная информация</summary>
-            <div className="mt-1 p-2 bg-gray-100 rounded">
-              <p className="font-bold">Инструкция по отладке:</p>
-              <ol className="list-decimal pl-4 space-y-1">
-                <li>Откройте консоль разработчика (F12 или Ctrl+Shift+I)</li>
-                <li>Перейдите на вкладку "Console"</li>
-                <li>Ищите записи "DETAILED USER DATA LOG", "All name fields for user" и "Raw API Response"</li>
-                <li>В этих логах можно увидеть полную структуру данных с сервера</li>
-              </ol>
-              <p className="mt-2">Возможная причина проблемы: API возвращает короткие значения для имен пользователей в некоторых полях.</p>
-            </div>
-          </details>
         </div>
 
         <div className="p-4">
@@ -339,7 +324,7 @@ export default function Home() {
                           </AvatarFallback>
                         </Avatar>
                       )}
-                      <div className={`p-3 rounded-xl ${message.fromUser ? 'bg-blue-500 text-white' : 'bg-[#E9ECEF]'}`}>
+                      <div className="bg-[#E9ECEF] p-3 rounded-xl">
                         {!message.fromUser && (
                           <div className="text-xs font-medium text-gray-600 mb-1">
                             {chats.find(c => c.id === selectedChat)?.username || 'Неизвестный пользователь'}
