@@ -289,6 +289,9 @@ export async function getChatMessages(
     
     const data = await response.json();
     
+    // Отладочное логирование
+    console.log('Raw messages response:', JSON.stringify(data).substring(0, 500) + '...');
+    
     // Проверяем и трансформируем данные
     if (!data || !Array.isArray(data.messages)) {
       console.error('Invalid response format:', data);
@@ -296,21 +299,38 @@ export async function getChatMessages(
     }
     
     // Проверяем и преобразуем сообщения
-    const messages: Message[] = data.messages.map((msg: any) => ({
-      id: parseInt(msg.id),
-      text: msg.text || "",
-      timestamp: msg.createdAt || msg.timestamp || new Date().toISOString(),
-      fromUser: msg.fromUser === true,
-      media: Array.isArray(msg.media) ? msg.media.map((m: any) => ({
-        id: m.id || Date.now(),
-        type: m.type || 'photo',
-        url: m.url || '',
-        files: m.files
-      })) : [],
-      price: msg.price || 0,
-      isFree: msg.isFree === undefined ? true : msg.isFree,
-      isNew: msg.isNew || false
-    }));
+    const messages: Message[] = data.messages.map((msg: any) => {
+      // Отладочное логирование для проверки структуры медиафайлов
+      if (msg.media && msg.media.length > 0) {
+        console.log(`Message ${msg.id} has media:`, JSON.stringify(msg.media).substring(0, 200));
+      }
+      
+      return {
+        id: parseInt(msg.id) || Date.now(),
+        text: msg.text || "",
+        timestamp: msg.createdAt || msg.timestamp || new Date().toISOString(),
+        fromUser: msg.fromUser === true,
+        media: Array.isArray(msg.media) ? msg.media.map((m: any) => {
+          // Определяем корректный URL медиа-файла
+          let url = '';
+          if (m.files && m.files.full && m.files.full.url) {
+            url = m.files.full.url;
+          } else if (m.url) {
+            url = m.url;
+          }
+          
+          return {
+            id: m.id || Date.now() + Math.random(),
+            type: m.type || 'photo',
+            url: url,
+            files: m.files
+          };
+        }) : [],
+        price: msg.price || 0,
+        isFree: msg.isFree === undefined ? true : msg.isFree,
+        isNew: msg.isNew || false
+      };
+    });
     
     // Получаем информацию о пагинации
     const pagination = data.pagination || {
@@ -318,6 +338,14 @@ export async function getChatMessages(
       total: data.total || messages.length,
       hasMore: data.hasMore || !!data.next_id
     };
+    
+    // Логируем пример обработанного сообщения
+    if (messages.length > 0) {
+      console.log('First processed message:', JSON.stringify(messages[0]).substring(0, 300));
+      if (messages[0].media && messages[0].media.length > 0) {
+        console.log('Media in first message:', messages[0].media);
+      }
+    }
     
     return {
       messages,

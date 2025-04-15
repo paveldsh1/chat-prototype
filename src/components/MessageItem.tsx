@@ -17,6 +17,11 @@ interface MessageProps {
     price: number;
     isFree: boolean;
     isOpened: boolean;
+    media?: Array<{
+      id: string | number;
+      type: string;
+      url?: string;
+    }>;
   };
 }
 
@@ -25,6 +30,12 @@ export default function MessageItem({ message }: MessageProps) {
     hour: '2-digit', 
     minute: '2-digit' 
   });
+
+  // Отладочное логирование
+  console.log(`Rendering MessageItem, has media: ${Boolean(message.media?.length)}`);
+  if (message.media && message.media.length > 0) {
+    console.log('Media items:', message.media);
+  }
 
   return (
     <div
@@ -55,7 +66,92 @@ export default function MessageItem({ message }: MessageProps) {
 
           <p className="break-words">{message.text}</p>
 
-          {message.mediaType && message.mediaUrl && (
+          {/* Проверка на наличие медиа в новом формате */}
+          {message.media && message.media.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {message.isFree ? (
+                // Бесплатный контент
+                <>
+                  {message.media.map((media) => (
+                    <div key={media.id} className="media-container">
+                      {media.type === 'photo' && media.url ? (
+                        <img
+                          src={media.url}
+                          alt="Media content"
+                          className="rounded max-w-full cursor-pointer hover:opacity-90"
+                          onClick={() => window.open(media.url, '_blank')}
+                          onError={(e) => {
+                            console.error('Image failed to load:', media.url);
+                            e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0yNCAxMGMwLTUuNTIzLTQuNDc3LTEwLTEwLTEwLTUuNTIzIDAtMTAgNC40NzctMTAgMTBzNC40NzcgMTAgMTAgMTBjNS41MjMgMCAxMC00LjQ3NyAxMC0xMHptLTIyIDFjMC01LjUxNCA0LjQ4Ni0xMCAxMC0xMCA1LjUxNCAwIDEwIDQuNDg2IDEwIDEwIDAgNS41MTQtNC40ODYgMTAtMTAgMTAtNS41MTQgMC0xMC00LjQ4Ni0xMC0xMHptMTQuNS0zLjVjMC0uODI4LS42NzItMS41LTEuNS0xLjVzLTEuNS42NzItMS41IDEuNS42NzIgMS41IDEuNSAxLjUgMS41LS42NzIgMS41LTEuNXptLTkgMGMwLS44MjgtLjY3Mi0xLjUtMS41LTEuNXMtMS41LjY3Mi0xLjUgMS41LjY3MiAxLjUgMS41IDEuNSAxLjUtLjY3MiAxLjUtMS41em03LjUgM2MwIDQuMTQyLTIuNSA3LTcgN3MtNy0yLjg1OC03LTdjNS45NzYgNS45NzYgNy4xNzUgNSAxNCAweiIvPjwvc3ZnPg==';
+                          }}
+                        />
+                      ) : media.type === 'video' && media.url ? (
+                        <video
+                          src={media.url}
+                          controls
+                          className="rounded max-w-full"
+                          onError={(e) => {
+                            console.error('Video failed to load:', media.url);
+                            e.currentTarget.poster = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0yNCAxMGMwLTUuNTIzLTQuNDc3LTEwLTEwLTEwLTUuNTIzIDAtMTAgNC40NzctMTAgMTBzNC40NzcgMTAgMTAgMTBjNS41MjMgMCAxMC00LjQ3NyAxMC0xMHptLTIyIDFjMC01LjUxNCA0LjQ4Ni0xMCAxMC0xMCA1LjUxNCAwIDEwIDQuNDg2IDEwIDEwIDAgNS41MTQtNC40ODYgMTAtMTAgMTAtNS41MTQgMC0xMC00LjQ4Ni0xMC0xMHptMTQuNS0zLjVjMC0uODI4LS42NzItMS41LTEuNS0xLjVzLTEuNS42NzItMS41IDEuNS42NzIgMS41IDEuNSAxLjUgMS41LS42NzIgMS41LTEuNXptLTkgMGMwLS44MjgtLjY3Mi0xLjUtMS41LTEuNXMtMS41LjY3Mi0xLjUgMS41LjY3MiAxLjUgMS41IDEuNSAxLjUtLjY3MiAxLjUtMS41em03LjUgM2MwIDQuMTQyLTIuNSA3LTcgN3MtNy0yLjg1OC03LTdjNS45NzYgNS45NzYgNy4xNzUgNSAxNCAweiIvPjwvc3ZnPg==';
+                          }}
+                        />
+                      ) : (
+                        <div className="bg-gray-100 rounded p-2 text-center">
+                          Файл: {media.type || 'Неизвестный тип'}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </>
+              ) : (
+                // Платный контент
+                <div className="relative rounded overflow-hidden">
+                  <div className="aspect-video bg-gray-900 flex items-center justify-center">
+                    <div className="text-white text-center p-4">
+                      <div className="text-3xl mb-2">🔒</div>
+                      <div className="text-sm mb-1">Платный контент</div>
+                      <div className="text-lg font-bold">${message.price}</div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {message.media.length} {message.media.length === 1 ? 'файл' : 'файлов'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black opacity-60"></div>
+                  <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {message.media.slice(0, 3).map((media, index) => (
+                        <div 
+                          key={`thumb-${media.id}-${index}`} 
+                          className="w-12 h-12 bg-black rounded overflow-hidden border border-white/20"
+                        >
+                          {media.type === 'photo' && media.url && (
+                            <img
+                              src={media.url}
+                              alt=""
+                              className="w-full h-full object-cover opacity-50"
+                            />
+                          )}
+                          {media.type === 'video' && (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                              <span className="text-white text-xl">🎥</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {message.media.length > 3 && (
+                        <div className="text-white text-sm">
+                          +{message.media.length - 3}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Проверка на наличие медиа в старом формате (для совместимости) */}
+          {!message.media && message.mediaType && message.mediaUrl && (
             <div className="mt-2">
               {message.isFree ? (
                 // Бесплатный контент
@@ -66,12 +162,20 @@ export default function MessageItem({ message }: MessageProps) {
                       alt="Media content"
                       className="rounded max-w-full cursor-pointer hover:opacity-90"
                       onClick={() => window.open(message.mediaUrl, '_blank')}
+                      onError={(e) => {
+                        console.error('Image failed to load:', message.mediaUrl);
+                        e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0yNCAxMGMwLTUuNTIzLTQuNDc3LTEwLTEwLTEwLTUuNTIzIDAtMTAgNC40NzctMTAgMTBzNC40NzcgMTAgMTAgMTBjNS41MjMgMCAxMC00LjQ3NyAxMC0xMHptLTIyIDFjMC01LjUxNCA0LjQ4Ni0xMCAxMC0xMCA1LjUxNCAwIDEwIDQuNDg2IDEwIDEwIDAgNS41MTQtNC40ODYgMTAtMTAgMTAtNS41MTQgMC0xMC00LjQ4Ni0xMC0xMHptMTQuNS0zLjVjMC0uODI4LS42NzItMS41LTEuNS0xLjVzLTEuNS42NzItMS41IDEuNS42NzIgMS41IDEuNSAxLjUgMS41LS42NzIgMS41LTEuNXptLTkgMGMwLS44MjgtLjY3Mi0xLjUtMS41LTEuNXMtMS41LjY3Mi0xLjUgMS41LjY3MiAxLjUgMS41IDEuNSAxLjUtLjY3MiAxLjUtMS41em03LjUgM2MwIDQuMTQyLTIuNSA3LTcgN3MtNy0yLjg1OC03LTdjNS45NzYgNS45NzYgNy4xNzUgNSAxNCAweiIvPjwvc3ZnPg==';
+                      }}
                     />
                   ) : message.mediaType === 'video' ? (
                     <video
                       src={message.mediaUrl}
                       controls
                       className="rounded max-w-full"
+                      onError={(e) => {
+                        console.error('Video failed to load:', message.mediaUrl);
+                        e.currentTarget.poster = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgZmlsbC1ydWxlPSJldmVub2RkIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiPjxwYXRoIGQ9Ik0yNCAxMGMwLTUuNTIzLTQuNDc3LTEwLTEwLTEwLTUuNTIzIDAtMTAgNC40NzctMTAgMTBzNC40NzcgMTAgMTAgMTBjNS41MjMgMCAxMC00LjQ3NyAxMC0xMHptLTIyIDFjMC01LjUxNCA0LjQ4Ni0xMCAxMC0xMCA1LjUxNCAwIDEwIDQuNDg2IDEwIDEwIDAgNS41MTQtNC40ODYgMTAtMTAgMTAtNS41MTQgMC0xMC00LjQ4Ni0xMC0xMHptMTQuNS0zLjVjMC0uODI4LS42NzItMS41LTEuNS0xLjVzLTEuNS42NzItMS41IDEuNS42NzIgMS41IDEuNSAxLjUgMS41LS42NzIgMS41LTEuNXptLTkgMGMwLS44MjgtLjY3Mi0xLjUtMS41LTEuNXMtMS41LjY3Mi0xLjUgMS41LjY3MiAxLjUgMS41IDEuNSAxLjUtLjY3MiAxLjUtMS41em03LjUgM2MwIDQuMTQyLTIuNSA3LTcgN3MtNy0yLjg1OC03LTdjNS45NzYgNS45NzYgNy4xNzUgNSAxNCAweiIvPjwvc3ZnPg==';
+                      }}
                     />
                   ) : null}
                 </div>
@@ -90,7 +194,7 @@ export default function MessageItem({ message }: MessageProps) {
             </div>
           )}
 
-          <div className="text-xs mt-1 text-right opacity-70">
+          <div className={`text-xs mt-1 ${message.isFromUser ? 'text-right text-white opacity-80' : 'text-right text-gray-600'}`}>
             {formattedTime}
           </div>
         </div>

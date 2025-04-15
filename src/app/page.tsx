@@ -10,7 +10,7 @@ import { getChats, getChatMessages, sendMessage, checkAuth } from "@/lib/onlyfan
 import type { Chat, Message, AccountInfo, MessagePaginationResponse } from "@/lib/onlyfans-api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import LoadingSpinner from "@/components/LoadingSpinner";
-import { toast } from "@/components/ui/use-toast";
+import MessageItem from "@/components/MessageItem";
 
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -49,7 +49,8 @@ export default function Home() {
           throw new Error('Chat list must be an array');
         }
         setChats(chatList);
-        setSelectedChat(chatList[0]?.id || null);
+        // Убираем автоматический выбор первого чата
+        setSelectedChat(null);
         setInitializationProgress(50);
         
         // Шаг 3: Загрузка сообщений для каждого чата (40-100%)
@@ -113,87 +114,156 @@ export default function Home() {
 
   // Обновляем эффект выбора чата, чтобы использовать кэш
   useEffect(() => {
-    if (!selectedChat) return;
+    if (!selectedChat) {
+      // Если чат не выбран, очищаем сообщения
+      setMessages([]);
+      return;
+    }
+    
+    // Очищаем текущие сообщения при переключении чата
+    setMessages([]);
+    
+    // Форматируем ID чата
+    const chatIdStr = selectedChat.toString();
+    console.log(`Loading messages for chat: ${chatIdStr}`);
     
     // Загружаем сообщения, если их еще нет в кэше
-    if (!messageCache[selectedChat.toString()]) {
+    if (!messageCache[chatIdStr] || messageCache[chatIdStr].length === 0) {
       (async () => {
         try {
           setLoading(true);
-          const response = await getChatMessages(selectedChat.toString());
+          const response = await getChatMessages(chatIdStr);
           
+          // Убедимся, что сообщения отсортированы
+          const sortedMessages = [...response.messages].sort((a, b) => 
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+          
+          console.log(`Loaded ${sortedMessages.length} messages for chat ${chatIdStr}`);
+          
+          // Сохраняем в кэш
           setMessageCache(prev => ({
             ...prev,
-            [selectedChat.toString()]: response.messages
+            [chatIdStr]: sortedMessages
           }));
           
+          // Обновляем информацию о пагинации
           setPaginationCache(prev => ({
             ...prev,
-            [selectedChat.toString()]: { 
+            [chatIdStr]: { 
               next_id: response.pagination?.next_id || null 
             }
           }));
           
-          setMessages(response.messages);
+          // Устанавливаем сообщения для отображения
+          setMessages(sortedMessages);
         } catch (error) {
-          console.error(`Failed to fetch messages for chat ${selectedChat}:`, error);
+          console.error(`Failed to fetch messages for chat ${chatIdStr}:`, error);
           setError(error instanceof Error ? error.message : 'Unknown error');
+          // Сбрасываем кэш для данного чата
+          setMessageCache(prev => ({
+            ...prev,
+            [chatIdStr]: []
+          }));
+          setPaginationCache(prev => ({
+            ...prev,
+            [chatIdStr]: { next_id: null }
+          }));
+          setMessages([]);
         } finally {
           setLoading(false);
         }
       })();
     } else {
       // Используем закэшированные сообщения
-      setMessages(messageCache[selectedChat.toString()]);
+      console.log(`Using ${messageCache[chatIdStr].length} cached messages for chat ${chatIdStr}`);
+      // Проверяем ID сообщений в кэше для дебага
+      const messageIds = messageCache[chatIdStr].map(m => m.id);
+      const uniqueIds = new Set(messageIds);
+      if (messageIds.length !== uniqueIds.size) {
+        console.warn(`Found ${messageIds.length - uniqueIds.size} duplicate message IDs in cache`);
+      }
+      
+      // Используем закэшированные сообщения, убедившись, что они отсортированы
+      const sortedMessages = [...messageCache[chatIdStr]].sort((a, b) => 
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+      setMessages(sortedMessages);
     }
   }, [selectedChat]);
 
-  // Функция для загрузки предыдущих сообщений
+  // Функция загрузки более ранних сообщений
   const loadEarlierMessages = async () => {
-    if (!selectedChat || loadingMore || !paginationCache[selectedChat.toString()].next_id) {
+    if (!selectedChat || loadingMore || !paginationCache[selectedChat.toString()]?.next_id) {
       return;
     }
     
-    setLoadingMore(true);
-    
     try {
-      const nextId = paginationCache[selectedChat.toString()].next_id;
-      if (!nextId) {
-        // Больше нет сообщений для загрузки
-        setLoadingMore(false);
-        return;
-      }
+      setLoadingMore(true);
       
-      const messagesResponse = await getChatMessages(
-        selectedChat.toString(), 
-        nextId
+      const chatIdStr = selectedChat.toString();
+      const nextId = paginationCache[chatIdStr]?.next_id;
+      console.log(`Loading earlier messages for chat ${chatIdStr}, next_id: ${nextId}`);
+      
+      const response = await getChatMessages(chatIdStr, nextId || undefined);
+      
+      // Убедимся, что сообщения отсортированы
+      const sortedNewMessages = [...response.messages].sort((a, b) => 
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
       
-      if (messagesResponse?.messages?.length) {
-        setMessageCache(prev => ({
-          ...prev,
-          [selectedChat.toString()]: [
-            ...messagesResponse.messages,
-            ...(prev[selectedChat.toString()] || [])
-          ]
-        }));
-        
-        setPaginationCache(prev => ({
-          ...prev,
-          [selectedChat.toString()]: { 
-            next_id: messagesResponse.pagination?.next_id || null 
-          }
-        }));
-      }
-    } catch (error) {
-      console.error('Failed to load earlier messages:', error);
-      setError('Не удалось загрузить предыдущие сообщения');
+      // Получаем текущие ID сообщений для предотвращения дублирования
+      const existingIds = new Set(messages.map(m => m.id));
       
-      // Если произошла ошибка, сбрасываем пагинацию для предотвращения повторных запросов
+      // Фильтруем новые сообщения, которых еще нет
+      const uniqueNewMessages = sortedNewMessages.filter(msg => !existingIds.has(msg.id));
+      
+      console.log(`Loaded ${sortedNewMessages.length} earlier messages, ${uniqueNewMessages.length} are new`);
+      
+      // Обновляем кэш
+      setMessageCache(prev => {
+        const chatMessages = prev[chatIdStr] || [];
+        // Используем Set для удаления дубликатов по ID
+        const allMessageIds = new Set([...chatMessages, ...uniqueNewMessages].map(m => m.id));
+        const uniqueMessages = [...allMessageIds].map(id => 
+          [...chatMessages, ...uniqueNewMessages].find(m => m.id === id)
+        ).filter(Boolean) as Message[];
+        
+        // Сортируем все сообщения по времени
+        const sortedAllMessages = uniqueMessages.sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        
+        return {
+          ...prev,
+          [chatIdStr]: sortedAllMessages
+        };
+      });
+      
+      // Обновляем информацию о пагинации
       setPaginationCache(prev => ({
         ...prev,
-        [selectedChat.toString()]: { next_id: null }
+        [chatIdStr]: { 
+          next_id: response.pagination?.next_id || null 
+        }
       }));
+      
+      // Обновляем сообщения
+      setMessages(prevMessages => {
+        // Объединяем старые и новые сообщения без дубликатов
+        const allMessageIds = new Set([...prevMessages, ...uniqueNewMessages].map(m => m.id));
+        const uniqueMessages = [...allMessageIds].map(id => 
+          [...prevMessages, ...uniqueNewMessages].find(m => m.id === id)
+        ).filter(Boolean) as Message[];
+        
+        // Сортируем все сообщения по времени
+        return uniqueMessages.sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+      });
+    } catch (error) {
+      console.error(`Failed to fetch earlier messages:`, error);
+      setError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setLoadingMore(false);
     }
@@ -255,9 +325,74 @@ export default function Home() {
     const container = e.currentTarget;
     
     // Если скроллим вверх и находимся вблизи верха контейнера
-    if (container.scrollTop < 100) {
+    if (container.scrollTop < 100 && !loadingMore && selectedChat) {
+      console.log('Triggering loadEarlierMessages from scroll handler');
       loadEarlierMessages();
     }
+  };
+
+  // Место для отображения сообщений
+  // Улучшаем отображение MessageItem компонента
+  const renderMessages = () => {
+    if (loading) {
+      return (
+        <div className="text-center p-4">
+          <LoadingSpinner size="md" text="Загрузка сообщений..." />
+        </div>
+      );
+    }
+
+    if (messages.length === 0) {
+      return (
+        <div className="text-center p-4 text-gray-500">
+          {selectedChat ? 'Нет сообщений' : 'Выберите чат для просмотра сообщений'}
+        </div>
+      );
+    }
+
+    // Выводим в консоль первое сообщение для отладки
+    if (messages.length > 0) {
+      console.log('First message:', messages[0]);
+      if (messages[0].media && messages[0].media.length > 0) {
+        console.log('Media in first message:', messages[0].media);
+      }
+    }
+
+    return (
+      <div className="space-y-4">
+        {messages.map((message, index) => {
+          // Генерируем уникальный ключ, добавляя индекс
+          const uniqueKey = `${message.id}-${index}`;
+          
+          // Подготавливаем данные для MessageItem
+          const messageData = {
+            id: message.id.toString(),
+            text: message.text,
+            fromUser: {
+              id: message.fromUser ? "user" : selectedChat?.toString() || "",
+              name: message.fromUser ? "Вы" : chats.find(c => c.id === selectedChat)?.username || "Пользователь",
+              username: message.fromUser ? "Вы" : chats.find(c => c.id === selectedChat)?.username || "user",
+              avatar: message.fromUser ? null : `https://onlyfans.com/${chats.find(c => c.id === selectedChat)?.username}/avatar`
+            },
+            mediaType: message.media && message.media[0]?.type || null,
+            mediaUrl: message.media && message.media[0]?.url || null,
+            createdAt: message.timestamp,
+            isFromUser: message.fromUser,
+            price: message.price || 0,
+            isFree: message.isFree !== false,
+            isOpened: true,
+            media: message.media || []
+          };
+
+          // Добавим логирование для отладки
+          if (message.media && message.media.length > 0) {
+            console.log(`Message ${uniqueKey} has media:`, message.media);
+          }
+
+          return <MessageItem key={uniqueKey} message={messageData} />;
+        })}
+      </div>
+    );
   };
 
   if (authChecking) {
@@ -411,129 +546,15 @@ export default function Home() {
           onScroll={handleScroll}
         >
           <div className="p-4 space-y-4">
+            {/* Индикатор загрузки предыдущих сообщений */}
             {loadingMore && (
               <div className="text-center mb-4">
                 <LoadingSpinner size="sm" text="Загрузка предыдущих сообщений..." />
               </div>
             )}
-            {loading && (
-              <div className="text-center p-4">
-                <LoadingSpinner size="md" text="Загрузка сообщений..." />
-              </div>
-            )}
-            {!loading && messages.length === 0 ? (
-              <div className="text-center p-4 text-gray-500">
-                {selectedChat ? 'Нет сообщений' : 'Выберите чат для просмотра сообщений'}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex ${message.fromUser ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div className={`flex items-start gap-2 max-w-[70%] ${message.fromUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                      {!message.fromUser && (
-                        <Avatar className="mt-0.5 flex-shrink-0">
-                          <AvatarImage 
-                            src={`https://onlyfans.com/${chats.find(c => c.id === selectedChat)?.username}/avatar`} 
-                          />
-                          <AvatarFallback>
-                            {
-                              (() => {
-                                const username = chats.find(c => c.id === selectedChat)?.username || '';
-                                return username && username.length > 0 ? username[0].toUpperCase() : '?';
-                              })()
-                            }
-                          </AvatarFallback>
-                        </Avatar>
-                      )}
-                      <div className="bg-[#E9ECEF] p-3 rounded-xl">
-                        {!message.fromUser && (
-                          <div className="text-xs font-medium text-gray-600 mb-1">
-                            {chats.find(c => c.id === selectedChat)?.username || 'Неизвестный пользователь'}
-                          </div>
-                        )}
-                        <p className="break-words">{message.text}</p>
-                        {message.media && message.media.length > 0 && (
-                          <div className="mt-2">
-                            {!message.isFree ? (
-                              // Платный контент
-                              <div className="relative rounded overflow-hidden">
-                                <div className="aspect-video bg-gray-900 flex items-center justify-center">
-                                  <div className="text-white text-center p-4">
-                                    <div className="text-3xl mb-2">🔒</div>
-                                    <div className="text-sm mb-1">Платный контент</div>
-                                    <div className="text-lg font-bold">${message.price}</div>
-                                    <div className="text-xs text-gray-400 mt-1">
-                                      {message.media.length} {message.media.length === 1 ? 'файл' : 'файлов'}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black opacity-60"></div>
-                                <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center justify-between">
-                                  <div className="flex items-center gap-2">
-                                    {message.media.slice(0, 3).map((media, index) => (
-                                      <div 
-                                        key={media.id} 
-                                        className="w-12 h-12 bg-black rounded overflow-hidden border border-white/20"
-                                      >
-                                        {media.type === 'photo' && media.url && (
-                                          <img
-                                            src={media.url}
-                                            alt=""
-                                            className="w-full h-full object-cover opacity-50"
-                                          />
-                                        )}
-                                        {media.type === 'video' && (
-                                          <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                                            <span className="text-white text-xl">🎥</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    ))}
-                                    {message.media.length > 3 && (
-                                      <div className="text-white text-sm">
-                                        +{message.media.length - 3}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              // Бесплатный контент
-                              <div className="space-y-2">
-                                {message.media.map((media) => (
-                                  <div key={media.id}>
-                                    {media.type === 'photo' ? (
-                                      <img
-                                        src={media.url}
-                                        alt="Media content"
-                                        className="rounded max-w-full cursor-pointer hover:opacity-90"
-                                        onClick={() => window.open(media.url, '_blank')}
-                                      />
-                                    ) : media.type === 'video' ? (
-                                      <video
-                                        src={media.url}
-                                        controls
-                                        className="rounded max-w-full"
-                                      />
-                                    ) : null}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        <div className="text-xs mt-1 text-gray-500">
-                          {new Date(message.timestamp).toLocaleTimeString()}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            
+            {/* Отображение сообщений */}
+            {renderMessages()}
           </div>
         </div>
 
