@@ -3,10 +3,18 @@ const ACCOUNT_ID = 'acct_601447d3a13342e0a0da8c16aa35ad07';
 const API_BASE_URL = 'https://onlyfansapi.com/api/v1';
 
 export interface Message {
-  id: string;
+  id: number;
   text: string;
   fromUser: boolean;
   timestamp: string;
+  isNew: boolean;
+  isFree: boolean;
+  price: number;
+  media?: Array<{
+    id: number;
+    type: string;
+    url: string;
+  }>;
 }
 
 export interface Chat {
@@ -25,6 +33,7 @@ export interface AccountInfo {
   username: string;
   email?: string;
   name?: string;
+  avatar?: string;
   _meta?: {
     _credits?: {
       used: number;
