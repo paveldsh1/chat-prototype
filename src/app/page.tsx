@@ -257,36 +257,73 @@ export default function Home() {
                       >
                         <p>{message.text}</p>
                         {message.media && message.media.length > 0 && (
-                          <div className="mt-2 space-y-2">
-                            {message.media.map((media) => (
-                              <div key={media.id} className="relative">
-                                {media.type === 'photo' ? (
-                                  <img
-                                    src={media.url}
-                                    alt="Media content"
-                                    className="rounded max-w-full cursor-pointer hover:opacity-90"
-                                    onClick={() => window.open(media.url, '_blank')}
-                                  />
-                                ) : media.type === 'video' ? (
-                                  <video
-                                    src={media.url}
-                                    controls
-                                    className="rounded max-w-full"
-                                  />
-                                ) : null}
-                                {!message.isFree && (
-                                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-                                    <div className="text-white text-center">
-                                      <div className="text-2xl mb-2">🔒</div>
-                                      <div className="text-sm">Платный контент</div>
-                                      {message.price > 0 && (
-                                        <div className="text-sm">${message.price}</div>
-                                      )}
+                          <div className="mt-2">
+                            {!message.isFree ? (
+                              // Платный контент
+                              <div className="relative rounded overflow-hidden">
+                                <div className="aspect-video bg-gray-900 flex items-center justify-center">
+                                  <div className="text-white text-center p-4">
+                                    <div className="text-3xl mb-2">🔒</div>
+                                    <div className="text-sm mb-1">Платный контент</div>
+                                    <div className="text-lg font-bold">${message.price}</div>
+                                    <div className="text-xs text-gray-400 mt-1">
+                                      {message.media.length} {message.media.length === 1 ? 'файл' : 'файлов'}
                                     </div>
                                   </div>
-                                )}
+                                </div>
+                                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black opacity-60"></div>
+                                <div className="absolute bottom-0 left-0 right-0 p-3 flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    {message.media.slice(0, 3).map((media, index) => (
+                                      <div 
+                                        key={media.id} 
+                                        className="w-12 h-12 bg-black rounded overflow-hidden border border-white/20"
+                                      >
+                                        {media.type === 'photo' && media.url && (
+                                          <img
+                                            src={media.url}
+                                            alt=""
+                                            className="w-full h-full object-cover opacity-50"
+                                          />
+                                        )}
+                                        {media.type === 'video' && (
+                                          <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                                            <span className="text-white text-xl">🎥</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {message.media.length > 3 && (
+                                      <div className="text-white text-sm">
+                                        +{message.media.length - 3}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                            ))}
+                            ) : (
+                              // Бесплатный контент
+                              <div className="space-y-2">
+                                {message.media.map((media) => (
+                                  <div key={media.id}>
+                                    {media.type === 'photo' ? (
+                                      <img
+                                        src={media.url}
+                                        alt="Media content"
+                                        className="rounded max-w-full cursor-pointer hover:opacity-90"
+                                        onClick={() => window.open(media.url, '_blank')}
+                                      />
+                                    ) : media.type === 'video' ? (
+                                      <video
+                                        src={media.url}
+                                        controls
+                                        className="rounded max-w-full"
+                                      />
+                                    ) : null}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                         <div className={`text-xs mt-1 ${
