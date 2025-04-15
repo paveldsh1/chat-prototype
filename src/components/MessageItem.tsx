@@ -47,6 +47,35 @@ interface MessageProps {
   };
 }
 
+// Определяем тип для медиа-элементов
+type MediaItem = {
+  id: string | number;
+  type: string;
+  url?: string;
+  files?: {
+    full?: {
+      url: string | null;
+      width?: number;
+      height?: number;
+    };
+    thumb?: {
+      url: string | null;
+    };
+    preview?: {
+      url: string | null;
+    };
+    squarePreview?: {
+      url: string | null;
+    };
+  };
+  canView?: boolean;
+  duration?: number;
+  videoSources?: {
+    "720"?: string | null;
+    "240"?: string | null;
+  };
+};
+
 export default function MessageItem({ message }: MessageProps) {
   const formattedTime = new Date(message.createdAt).toLocaleTimeString([], { 
     hour: '2-digit', 
@@ -60,7 +89,7 @@ export default function MessageItem({ message }: MessageProps) {
   }
 
   // Получаем наилучший доступный URL медиа-файла
-  const getMediaUrl = (media: MessageProps['message']['media'][0]) => {
+  const getMediaUrl = (media: MediaItem) => {
     if (media.canView === false) return null;
     
     // Предпочтение источникам видео для лучшего качества
@@ -78,7 +107,7 @@ export default function MessageItem({ message }: MessageProps) {
   };
 
   // Получаем URL миниатюры
-  const getThumbUrl = (media: MessageProps['message']['media'][0]) => {
+  const getThumbUrl = (media: MediaItem) => {
     return media.files?.thumb?.url || 
            media.files?.squarePreview?.url || 
            media.files?.preview?.url || 
@@ -86,7 +115,7 @@ export default function MessageItem({ message }: MessageProps) {
   };
 
   // Проверяем, является ли медиа доступным
-  const isMediaAccessible = (media: MessageProps['message']['media'][0]) => {
+  const isMediaAccessible = (media: MediaItem) => {
     return media.canView !== false;
   };
 
@@ -129,7 +158,7 @@ export default function MessageItem({ message }: MessageProps) {
   };
 
   // Функция для отображения медиа-элемента
-  const renderMediaItem = (media: MessageProps['message']['media'][0], index: number) => {
+  const renderMediaItem = (media: MediaItem, index: number) => {
     const mediaUrl = getMediaUrl(media);
     
     return (
@@ -143,7 +172,9 @@ export default function MessageItem({ message }: MessageProps) {
                     src={mediaUrl}
                     alt="Media content"
                     className="rounded max-w-full cursor-pointer hover:opacity-90"
-                    onClick={() => window.open(mediaUrl, '_blank')}
+                    onClick={() => {
+                      if (mediaUrl) window.open(mediaUrl, '_blank');
+                    }}
                     onError={(e) => {
                       console.error('Image failed to load:', mediaUrl);
                       e.currentTarget.style.display = 'none';
@@ -235,12 +266,16 @@ export default function MessageItem({ message }: MessageProps) {
 
   // Проверяем наличие медиа в сообщении
   const hasMedia = Boolean(message.media?.length) || (message.mediaType && message.mediaUrl);
+  
+  // Отладочное логирование
+  console.log(`Rendering MessageItem, fromUser: ${message.isFromUser}, position: ${message.isFromUser ? 'right' : 'left'}`);
 
   return (
     <div
       className={`flex ${message.isFromUser ? 'justify-end' : 'justify-start'} mb-4`}
     >
       <div className={`flex items-start gap-2 max-w-[80%] ${message.isFromUser ? 'flex-row-reverse' : 'flex-row'}`}>
+        {/* Аватар показываем только для сообщений собеседника */}
         {!message.isFromUser && (
           <Avatar className="mt-0.5 flex-shrink-0">
             <AvatarImage src={message.fromUser.avatar || ''} />
@@ -257,6 +292,7 @@ export default function MessageItem({ message }: MessageProps) {
               : 'bg-gray-200 text-gray-800'
           }`}
         >
+          {/* Имя отправителя показываем только для сообщений собеседника */}
           {!message.isFromUser && (
             <div className="text-xs font-medium mb-1">
               {message.fromUser.name || message.fromUser.username}
@@ -341,7 +377,9 @@ export default function MessageItem({ message }: MessageProps) {
                         src={message.mediaUrl}
                         alt="Media content"
                         className="rounded max-w-full cursor-pointer hover:opacity-90"
-                        onClick={() => window.open(message.mediaUrl, '_blank')}
+                        onClick={() => {
+                          if (message.mediaUrl) window.open(message.mediaUrl, '_blank');
+                        }}
                         onError={(e) => {
                           console.error('Image failed to load:', message.mediaUrl);
                           e.currentTarget.style.display = 'none';

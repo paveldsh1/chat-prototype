@@ -305,11 +305,17 @@ export async function getChatMessages(
         console.log(`Message ${msg.id} has media:`, JSON.stringify(msg.media).substring(0, 200));
       }
       
+      // Проверяем, является ли сообщение от текущего пользователя
+      // В API данные приходят так, что isFromUser указывает, что сообщение именно от пользователя
+      const isFromCurrentUser = msg.isFromUser === true;
+      
+      console.log(`Message ${msg.id} isFromUser: ${isFromCurrentUser}, original value:`, msg.isFromUser);
+      
       return {
         id: parseInt(msg.id) || Date.now(),
         text: msg.text || "",
         timestamp: msg.createdAt || msg.timestamp || new Date().toISOString(),
-        fromUser: msg.fromUser === true,
+        fromUser: isFromCurrentUser, // Используем правильное значение
         media: Array.isArray(msg.media) ? msg.media.map((m: any) => {
           // Определяем корректный URL медиа-файла
           let url = '';

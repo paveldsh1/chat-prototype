@@ -406,7 +406,7 @@ export default function Home() {
           };
 
           // Добавим логирование для отладки
-          console.log(`Message ${uniqueKey} has media:`, messageData.media);
+          console.log(`Message ${uniqueKey} from user: ${message.fromUser}, will display on ${message.fromUser ? 'right' : 'left'}`);
 
           return <MessageItem key={uniqueKey} message={messageData} />;
         })}
