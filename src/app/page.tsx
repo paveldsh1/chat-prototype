@@ -240,7 +240,7 @@ export default function Home() {
                     key={message.id}
                     className={`flex ${!message.fromUser ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`flex items-start gap-2 max-w-[70%] ${!message.fromUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                    <div className={`flex items-start gap-2 max-w-[70%] ${!message.fromUser ? 'flex-row-reverse' : 'flex-row'} bg-[#E9ECEF] p-3 rounded-xl`}>
                       {message.fromUser && (
                         <Avatar className="mt-0.5 flex-shrink-0">
                           <AvatarImage 
@@ -255,7 +255,7 @@ export default function Home() {
                         className={`rounded-lg p-3 ${
                           !message.fromUser
                             ? 'bg-[#0195F7] text-white'
-                            : 'bg-[#F0F2F5]'
+                            : 'bg-[#E9ECEF]'
                         }`}
                       >
                         <p className="break-words">{message.text}</p>
