@@ -186,18 +186,33 @@ export async function sendMessage(chatId: string, text: string): Promise<Message
     const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({ text })
     });
 
-    return handleApiResponse<Message>(response);
+    if (!response.ok) {
+      throw new Error(`Failed to send message: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    // Преобразуем ответ API в формат Message
+    return {
+      id: data.data.id,
+      text: data.data.text,
+      timestamp: data.data.createdAt,
+      fromUser: true, // Сообщение от текущего пользователя
+      media: data.data.media || [],
+      isFree: data.data.isFree,
+      price: data.data.price || 0,
+      isNew: data.data.isNew
+    };
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('Error sending message:', error);
     throw error instanceof Error 
       ? error 
-      : new Error('Failed to send message. Please check your connection.');
+      : new Error('Failed to send message');
   }
 }
 

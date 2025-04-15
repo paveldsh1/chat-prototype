@@ -238,10 +238,10 @@ export default function Home() {
                 {messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex ${!message.fromUser ? 'justify-end' : 'justify-start'}`}
+                    className={`flex ${message.fromUser ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className={`flex items-start gap-2 max-w-[70%] ${!message.fromUser ? 'flex-row-reverse' : 'flex-row'} bg-[#E9ECEF] p-3 rounded-xl`}>
-                      {message.fromUser && (
+                    <div className={`flex items-start gap-2 max-w-[70%] ${message.fromUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                      {!message.fromUser && (
                         <Avatar className="mt-0.5 flex-shrink-0">
                           <AvatarImage 
                             src={`https://onlyfans.com/${chats.find(c => c.id === selectedChat)?.username}/avatar`} 
@@ -251,13 +251,7 @@ export default function Home() {
                           </AvatarFallback>
                         </Avatar>
                       )}
-                      <div
-                        className={`rounded-lg p-3 ${
-                          !message.fromUser
-                            ? 'bg-[#0195F7] text-white'
-                            : 'bg-[#E9ECEF]'
-                        }`}
-                      >
+                      <div className="bg-[#E9ECEF] p-3 rounded-xl">
                         <p className="break-words">{message.text}</p>
                         {message.media && message.media.length > 0 && (
                           <div className="mt-2">
@@ -329,9 +323,7 @@ export default function Home() {
                             )}
                           </div>
                         )}
-                        <div className={`text-xs mt-1 ${
-                          !message.fromUser ? 'text-blue-100' : 'text-gray-500'
-                        }`}>
+                        <div className="text-xs mt-1 text-gray-500">
                           {new Date(message.timestamp).toLocaleTimeString()}
                         </div>
                       </div>

@@ -28,7 +28,7 @@ export async function GET(
     const messages = rawData.data.list.map((msg: any) => ({
       id: msg.id,
       text: msg.text.replace(/<[^>]*>/g, ''), // Удаляем HTML теги
-      fromUser: msg.fromUser.id === parseInt(params.chatId),
+      fromUser: msg.fromUser.id !== parseInt(params.chatId), // Инвертируем логику
       timestamp: msg.createdAt,
       isNew: msg.isNew,
       isFree: msg.isFree,
@@ -45,6 +45,45 @@ export async function GET(
     console.error('Error fetching messages:', error);
     return NextResponse.json(
       { error: 'Failed to fetch messages' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(
+  request: Request,
+  { params }: { params: { chatId: string } }
+) {
+  try {
+    const { text } = await request.json();
+
+    const response = await fetch(
+      `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/chats/${params.chatId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: data.error || 'Failed to send message' },
+        { status: response.status }
+      );
+    }
+
+    // Возвращаем ответ как есть, без преобразования
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error('Error sending message:', error);
+    return NextResponse.json(
+      { error: 'Failed to send message' },
       { status: 500 }
     );
   }
