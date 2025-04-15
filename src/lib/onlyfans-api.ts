@@ -13,7 +13,12 @@ export interface Message {
   media?: Array<{
     id: number;
     type: string;
-    url: string;
+    url?: string;
+    files?: {
+      full?: {
+        url: string;
+      };
+    };
   }>;
 }
 

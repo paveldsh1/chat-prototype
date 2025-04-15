@@ -55,6 +55,32 @@ export default function Home() {
           throw new Error('Chat list must be an array');
         }
         setChats(chatList);
+
+        // Предзагрузка сообщений для всех чатов
+        await Promise.all(
+          chatList.map(async (chat) => {
+            try {
+              const messageList = await getChatMessages(chat.id.toString());
+              const sortedMessages = messageList.map(msg => ({
+                ...msg,
+                media: msg.media?.map(m => ({
+                  ...m,
+                  url: m.files?.full?.url || m.url || ''
+                })) || []
+              })).sort((a, b) => 
+                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+              );
+              
+              setMessageCache(prev => ({
+                ...prev,
+                [chat.id]: sortedMessages
+              }));
+            } catch (error) {
+              console.error(`Failed to load messages for chat ${chat.id}:`, error);
+            }
+          })
+        );
+
       } catch (error) {
         console.error('Error loading chats:', error);
         setError(error instanceof Error ? error.message : 'Failed to load chats');
@@ -66,44 +92,15 @@ export default function Home() {
     loadChats();
   }, [account, authChecking]);
 
-  // Загрузка сообщений при выборе чата
+  // Обновляем эффект выбора чата, чтобы использовать кэш
   useEffect(() => {
     if (!selectedChat) return;
-
-    const loadMessages = async () => {
-      try {
-        setError(null);
-        setLoading(true);
-        
-        // Проверяем кэш
-        if (messageCache[selectedChat]) {
-          setMessages(messageCache[selectedChat]);
-          setLoading(false);
-          return;
-        }
-
-        const messageList = await getChatMessages(selectedChat.toString());
-        // Сортируем сообщения по времени (старые сверху)
-        const sortedMessages = messageList.sort((a, b) => 
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-        
-        // Сохраняем в кэш
-        setMessageCache(prev => ({
-          ...prev,
-          [selectedChat]: sortedMessages
-        }));
-        
-        setMessages(sortedMessages);
-      } catch (error) {
-        console.error('Failed to load messages:', error);
-        setError(error instanceof Error ? error.message : 'Failed to load messages');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadMessages();
+    
+    // Теперь просто берем сообщения из кэша
+    const cachedMessages = messageCache[selectedChat];
+    if (cachedMessages) {
+      setMessages(cachedMessages);
+    }
   }, [selectedChat, messageCache]);
 
   // Отправка сообщения
@@ -262,12 +259,33 @@ export default function Home() {
                         {message.media && message.media.length > 0 && (
                           <div className="mt-2 space-y-2">
                             {message.media.map((media) => (
-                              <img
-                                key={media.id}
-                                src={media.url}
-                                alt="Media content"
-                                className="rounded max-w-full"
-                              />
+                              <div key={media.id} className="relative">
+                                {media.type === 'photo' ? (
+                                  <img
+                                    src={media.url}
+                                    alt="Media content"
+                                    className="rounded max-w-full cursor-pointer hover:opacity-90"
+                                    onClick={() => window.open(media.url, '_blank')}
+                                  />
+                                ) : media.type === 'video' ? (
+                                  <video
+                                    src={media.url}
+                                    controls
+                                    className="rounded max-w-full"
+                                  />
+                                ) : null}
+                                {!message.isFree && (
+                                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                                    <div className="text-white text-center">
+                                      <div className="text-2xl mb-2">🔒</div>
+                                      <div className="text-sm">Платный контент</div>
+                                      {message.price > 0 && (
+                                        <div className="text-sm">${message.price}</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             ))}
                           </div>
                         )}
