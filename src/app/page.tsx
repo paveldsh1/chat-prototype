@@ -197,6 +197,46 @@ export default function Home() {
               Кредиты: {account._meta._credits.balance}
             </p>
           )}
+          
+          {/* Отладочная информация */}
+          <div className="mt-2 p-2 bg-gray-100 rounded text-xs">
+            <h3 className="font-bold mb-1">Debug Info:</h3>
+            <div className="overflow-x-auto">
+              {chats.map((chat, index) => (
+                <div key={index} className="mb-2 border-b border-gray-200 pb-1">
+                  <div><strong>Chat {index + 1} (ID: {chat.id}):</strong></div>
+                  <div>Username: "{chat.username}"</div>
+                  <div>Username Length: {chat.username ? chat.username.length : 0}</div>
+                  
+                  {/* Добавим кнопку для копирования ID чата */}
+                  <button 
+                    className="mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs"
+                    onClick={() => {
+                      navigator.clipboard.writeText(chat.id.toString());
+                      alert(`ID чата ${chat.id} скопирован в буфер обмена`);
+                    }}
+                  >
+                    Копировать ID
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Добавим отладочную консоль для исследования проблемы */}
+          <details className="mt-2 text-xs">
+            <summary className="font-bold cursor-pointer">Расширенная отладочная информация</summary>
+            <div className="mt-1 p-2 bg-gray-100 rounded">
+              <p className="font-bold">Инструкция по отладке:</p>
+              <ol className="list-decimal pl-4 space-y-1">
+                <li>Откройте консоль разработчика (F12 или Ctrl+Shift+I)</li>
+                <li>Перейдите на вкладку "Console"</li>
+                <li>Ищите записи "DETAILED USER DATA LOG", "All name fields for user" и "Raw API Response"</li>
+                <li>В этих логах можно увидеть полную структуру данных с сервера</li>
+              </ol>
+              <p className="mt-2">Возможная причина проблемы: API возвращает короткие значения для имен пользователей в некоторых полях.</p>
+            </div>
+          </details>
         </div>
 
         <div className="p-4">
@@ -224,10 +264,27 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                       <Avatar>
                         <AvatarImage src={`https://onlyfans.com/${chat.username}/avatar`} />
-                        <AvatarFallback>{chat.username ? chat.username[0].toUpperCase() : '?'}</AvatarFallback>
+                        <AvatarFallback>
+                          {chat.username && chat.username.length > 0 
+                            ? chat.username[0].toUpperCase() 
+                            : '?'}
+                        </AvatarFallback>
                       </Avatar>
                       <div>
-                        <div className="font-medium">{chat.username || 'Неизвестный пользователь'}</div>
+                        <div className="font-medium">
+                          {/* Отображаем имя пользователя или ID пользователя, если имя отсутствует */}
+                          {chat.username && chat.username.trim().length > 0 
+                            ? chat.username 
+                            : `User #${chat.id}`}
+                          
+                          {/* Если имя не соответствует ожидаемому формату, покажем это */}
+                          {chat.username === 'm' && (
+                            <span className="ml-2 text-xs text-red-500">(Неполное имя)</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          ID: {chat.id}
+                        </div>
                         {chat.lastMessage && (
                           <div className="text-sm text-gray-500 truncate">{chat.lastMessage}</div>
                         )}
@@ -246,7 +303,7 @@ export default function Home() {
         <div className="p-4 border-b bg-white sticky top-0 z-10">
           <h1 className="text-xl font-bold">
             {selectedChat 
-              ? chats.find(c => c.id === selectedChat)?.username 
+              ? chats.find(c => c.id === selectedChat)?.username || 'Неизвестный пользователь'
               : 'Выберите чат'}
           </h1>
         </div>
@@ -273,11 +330,21 @@ export default function Home() {
                             src={`https://onlyfans.com/${chats.find(c => c.id === selectedChat)?.username}/avatar`} 
                           />
                           <AvatarFallback>
-                            {(chats.find(c => c.id === selectedChat)?.username || '?')[0].toUpperCase()}
+                            {
+                              (() => {
+                                const username = chats.find(c => c.id === selectedChat)?.username || '';
+                                return username && username.length > 0 ? username[0].toUpperCase() : '?';
+                              })()
+                            }
                           </AvatarFallback>
                         </Avatar>
                       )}
-                      <div className="bg-[#E9ECEF] p-3 rounded-xl">
+                      <div className={`p-3 rounded-xl ${message.fromUser ? 'bg-blue-500 text-white' : 'bg-[#E9ECEF]'}`}>
+                        {!message.fromUser && (
+                          <div className="text-xs font-medium text-gray-600 mb-1">
+                            {chats.find(c => c.id === selectedChat)?.username || 'Неизвестный пользователь'}
+                          </div>
+                        )}
                         <p className="break-words">{message.text}</p>
                         {message.media && message.media.length > 0 && (
                           <div className="mt-2">

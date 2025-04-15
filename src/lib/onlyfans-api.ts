@@ -100,6 +100,13 @@ interface ChatResponse {
     id: number;
     name?: string;
     _view: string;
+    username?: string;
+    nickname?: string;
+    displayName?: string;
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    [key: string]: any; // Для захвата всех других полей
   };
   lastMessage?: {
     text: string;
@@ -108,6 +115,7 @@ interface ChatResponse {
     isFree: boolean;
   };
   unreadMessagesCount: number;
+  [key: string]: any; // Для захвата всех других полей
 }
 
 const handleApiResponse = async <T>(response: Response): Promise<T> => {
@@ -141,11 +149,66 @@ export async function checkAuth(): Promise<AccountInfo> {
   }
 }
 
+// Усовершенствованная функция получения имени пользователя
+function getUserDisplayName(fan: ChatResponse['fan']): string {
+  // Хардкодированные исправления для известных проблемных ID пользователей
+  const hardcodedNames: Record<number, string> = {
+    // Добавьте здесь ID пользователей и их правильные имена
+    // Например:
+    // 123456: "Correct User Name",
+  };
+  
+  // Проверяем, есть ли хардкодированное имя для этого ID
+  if (fan.id in hardcodedNames) {
+    console.log(`Using hardcoded name for user ${fan.id}: ${hardcodedNames[fan.id]}`);
+    return hardcodedNames[fan.id];
+  }
+  
+  // Логируем все возможные поля, содержащие имя пользователя
+  console.log('All name fields for user', fan.id, {
+    name: fan.name,
+    _view: fan._view,
+    username: fan.username,
+    nickname: fan.nickname,
+    displayName: fan.displayName,
+    firstName: fan.firstName,
+    lastName: fan.lastName,
+    fullName: fan.fullName,
+    allKeys: Object.keys(fan).filter(key => 
+      typeof fan[key] === 'string' && 
+      key.toLowerCase().includes('name')
+    )
+  });
+  
+  // Проверяем все возможные поля имени в порядке приоритета
+  if (fan.name && fan.name.length > 1) return fan.name;
+  if (fan.displayName && fan.displayName.length > 1) return fan.displayName;
+  if (fan.fullName && fan.fullName.length > 1) return fan.fullName;
+  if (fan.nickname && fan.nickname.length > 1) return fan.nickname;
+  if (fan.username && fan.username.length > 1) return fan.username;
+  if (fan._view && fan._view.length > 1) return fan._view;
+  
+  // Если все имена короткие, используем самое длинное
+  const nameFields = [
+    fan.name, fan.displayName, fan.fullName, fan.nickname, 
+    fan.username, fan._view, fan.firstName, fan.lastName
+  ].filter(Boolean) as string[];
+  
+  if (nameFields.length > 0) {
+    // Сортируем по длине и выбираем самое длинное
+    const longestName = nameFields.sort((a, b) => b.length - a.length)[0];
+    return longestName;
+  }
+  
+  return 'Unknown User';
+}
+
 export async function getChats(): Promise<Chat[]> {
   const response = await fetch('/api/onlyfans/chats');
   const result = await handleApiResponse<ApiResponse<ChatResponse[]>>(response);
   
   console.log('Raw API Response:', result);
+  console.log('Full API structure:', JSON.stringify(result, null, 2));
   
   // Проверяем структуру ответа
   if (!result.data || !Array.isArray(result.data)) {
@@ -153,15 +216,38 @@ export async function getChats(): Promise<Chat[]> {
     throw new Error('Invalid response format from chats API');
   }
   
-  return result.data.map((chat) => ({
-    id: chat.fan.id,
-    username: chat.fan.name || chat.fan._view || 'Unknown',
-    lastMessage: chat.lastMessage?.text?.replace(/<[^>]*>/g, '') || undefined,
-    unreadCount: chat.unreadMessagesCount,
-    hasMedia: Boolean(chat.lastMessage?.mediaCount),
-    price: chat.lastMessage?.price ?? 0,
-    isFree: chat.lastMessage?.isFree ?? true
-  }));
+  // Логируем данные пользователей, чтобы найти проблему
+  console.log('DETAILED USER DATA LOG:');
+  result.data.forEach((chat, index) => {
+    console.log(`User ${index + 1}:`, {
+      id: chat.fan.id,
+      name: chat.fan.name,
+      nameLength: chat.fan.name ? chat.fan.name.length : 0,
+      nameType: chat.fan.name ? typeof chat.fan.name : 'undefined',
+      view: chat.fan._view,
+      viewLength: chat.fan._view ? chat.fan._view.length : 0,
+      viewType: chat.fan._view ? typeof chat.fan._view : 'undefined',
+      rawFan: chat.fan
+    });
+  });
+  
+  return result.data.map((chat) => {
+    // Используем усовершенствованную функцию получения имени пользователя
+    const username = getUserDisplayName(chat.fan);
+    
+    // Логируем итоговое решение
+    console.log(`User ${chat.fan.id} final username:`, username);
+    
+    return {
+      id: chat.fan.id,
+      username: username,
+      lastMessage: chat.lastMessage?.text?.replace(/<[^>]*>/g, '') || undefined,
+      unreadCount: chat.unreadMessagesCount,
+      hasMedia: Boolean(chat.lastMessage?.mediaCount),
+      price: chat.lastMessage?.price ?? 0,
+      isFree: chat.lastMessage?.isFree ?? true
+    };
+  });
 }
 
 export async function getChatMessages(chatId: string): Promise<Message[]> {
