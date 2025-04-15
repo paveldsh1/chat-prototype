@@ -364,6 +364,27 @@ export default function Home() {
           // Генерируем уникальный ключ, добавляя индекс
           const uniqueKey = `${message.id}-${index}`;
           
+          // Принудительно добавляем хотя бы одно медиа для отображения заглушки
+          // Для отладки и демонстрации заглушек
+          let forcedMedia = message.media || [];
+          if (forcedMedia.length === 0) {
+            // Каждому третьему сообщению добавляем фото
+            // Каждому пятому видео
+            if (index % 3 === 0) {
+              forcedMedia = [{
+                id: index, // Используем числовой id вместо строки
+                type: 'photo',
+                // Не указываем URL, чтобы вызвать заглушку
+              }];
+            } else if (index % 5 === 0) {
+              forcedMedia = [{
+                id: index, // Используем числовой id вместо строки
+                type: 'video',
+                // Не указываем URL, чтобы вызвать заглушку
+              }];
+            }
+          }
+          
           // Подготавливаем данные для MessageItem
           const messageData = {
             id: message.id.toString(),
@@ -374,20 +395,18 @@ export default function Home() {
               username: message.fromUser ? "Вы" : chats.find(c => c.id === selectedChat)?.username || "user",
               avatar: message.fromUser ? null : `https://onlyfans.com/${chats.find(c => c.id === selectedChat)?.username}/avatar`
             },
-            mediaType: message.media && message.media[0]?.type || null,
-            mediaUrl: message.media && message.media[0]?.url || null,
+            mediaType: forcedMedia[0]?.type || null,
+            mediaUrl: forcedMedia[0]?.url || null,
             createdAt: message.timestamp,
             isFromUser: message.fromUser,
             price: message.price || 0,
             isFree: message.isFree !== false,
             isOpened: true,
-            media: message.media || []
+            media: forcedMedia
           };
 
           // Добавим логирование для отладки
-          if (message.media && message.media.length > 0) {
-            console.log(`Message ${uniqueKey} has media:`, message.media);
-          }
+          console.log(`Message ${uniqueKey} has media:`, messageData.media);
 
           return <MessageItem key={uniqueKey} message={messageData} />;
         })}
