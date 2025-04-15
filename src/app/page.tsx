@@ -20,45 +20,35 @@ export default function Home() {
   const [loadingChats, setLoadingChats] = useState(true);
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
-  // Кэш для сообщений
+  const [initializationProgress, setInitializationProgress] = useState(0);
   const [messageCache, setMessageCache] = useState<Record<number, Message[]>>({});
 
-  // Проверка авторизации
+  // Проверка авторизации и загрузка данных
   useEffect(() => {
-    const verifyAuth = async () => {
+    const initialize = async () => {
       try {
         setError(null);
+        
+        // Шаг 1: Авторизация (20%)
+        setInitializationProgress(0);
         const accountInfo = await checkAuth();
         setAccount(accountInfo);
-        console.log('Auth successful:', accountInfo);
-      } catch (error) {
-        setError(error instanceof Error ? error.message : 'Failed to authenticate');
-        console.error('Auth failed:', error);
-      } finally {
-        setAuthChecking(false);
-      }
-    };
-
-    verifyAuth();
-  }, []);
-
-  // Загрузка чатов только после успешной авторизации
-  useEffect(() => {
-    if (!account || authChecking) return;
-
-    const loadChats = async () => {
-      try {
-        setError(null);
-        setLoadingChats(true);
+        setInitializationProgress(20);
+        
+        // Шаг 2: Загрузка списка чатов (40%)
         const chatList = await getChats();
         if (!Array.isArray(chatList)) {
           throw new Error('Chat list must be an array');
         }
         setChats(chatList);
-
-        // Предзагрузка сообщений для всех чатов
+        setInitializationProgress(40);
+        
+        // Шаг 3: Загрузка сообщений для каждого чата (40-100%)
+        const totalChats = chatList.length;
+        const progressPerChat = 60 / totalChats; // Оставшиеся 60% делим на количество чатов
+        
         await Promise.all(
-          chatList.map(async (chat) => {
+          chatList.map(async (chat, index) => {
             try {
               const messageList = await getChatMessages(chat.id.toString());
               const sortedMessages = messageList.map(msg => ({
@@ -75,6 +65,11 @@ export default function Home() {
                 ...prev,
                 [chat.id]: sortedMessages
               }));
+              
+              // Обновляем прогресс после загрузки каждого чата
+              setInitializationProgress(prev => 
+                Math.min(100, 40 + Math.floor((index + 1) * progressPerChat))
+              );
             } catch (error) {
               console.error(`Failed to load messages for chat ${chat.id}:`, error);
             }
@@ -82,15 +77,17 @@ export default function Home() {
         );
 
       } catch (error) {
-        console.error('Error loading chats:', error);
-        setError(error instanceof Error ? error.message : 'Failed to load chats');
+        setError(error instanceof Error ? error.message : 'Failed to initialize');
+        console.error('Initialization failed:', error);
       } finally {
+        setAuthChecking(false);
         setLoadingChats(false);
+        setInitializationProgress(100);
       }
     };
-    
-    loadChats();
-  }, [account, authChecking]);
+
+    initialize();
+  }, []);
 
   // Обновляем эффект выбора чата, чтобы использовать кэш
   useEffect(() => {
@@ -132,8 +129,14 @@ export default function Home() {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="text-center">
-          <h2 className="text-xl font-bold mb-2">Проверка авторизации...</h2>
-          <p className="text-gray-500">Пожалуйста, подождите</p>
+          <h2 className="text-xl font-bold mb-2">Инициализация приложения...</h2>
+          <div className="w-64 h-2 bg-gray-200 rounded-full overflow-hidden mb-2">
+            <div 
+              className="h-full bg-blue-500 transition-all duration-300" 
+              style={{ width: `${initializationProgress}%` }}
+            />
+          </div>
+          <p className="text-gray-500">{initializationProgress}%</p>
         </div>
       </div>
     );
@@ -235,11 +238,11 @@ export default function Home() {
                 {messages.map((message) => (
                   <div
                     key={message.id}
-                    className={`flex ${message.fromUser ? 'justify-end' : 'justify-start'}`}
+                    className={`flex ${!message.fromUser ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div className="flex items-start gap-2 max-w-[70%]">
-                      {!message.fromUser && (
-                        <Avatar className="mt-0.5">
+                    <div className={`flex items-start gap-2 max-w-[70%] ${!message.fromUser ? 'flex-row-reverse' : 'flex-row'}`}>
+                      {message.fromUser && (
+                        <Avatar className="mt-0.5 flex-shrink-0">
                           <AvatarImage 
                             src={`https://onlyfans.com/${chats.find(c => c.id === selectedChat)?.username}/avatar`} 
                           />
@@ -250,12 +253,12 @@ export default function Home() {
                       )}
                       <div
                         className={`rounded-lg p-3 ${
-                          message.fromUser
-                            ? 'bg-blue-500 text-white'
-                            : 'bg-gray-100'
+                          !message.fromUser
+                            ? 'bg-[#0195F7] text-white'
+                            : 'bg-[#F0F2F5]'
                         }`}
                       >
-                        <p>{message.text}</p>
+                        <p className="break-words">{message.text}</p>
                         {message.media && message.media.length > 0 && (
                           <div className="mt-2">
                             {!message.isFree ? (
@@ -327,17 +330,11 @@ export default function Home() {
                           </div>
                         )}
                         <div className={`text-xs mt-1 ${
-                          message.fromUser ? 'text-blue-100' : 'text-gray-500'
+                          !message.fromUser ? 'text-blue-100' : 'text-gray-500'
                         }`}>
                           {new Date(message.timestamp).toLocaleTimeString()}
                         </div>
                       </div>
-                      {message.fromUser && (
-                        <Avatar className="mt-0.5">
-                          <AvatarImage src={account?.avatar} />
-                          <AvatarFallback>{(account?.username || '?')[0].toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                      )}
                     </div>
                   </div>
                 ))}
