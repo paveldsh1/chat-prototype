@@ -104,24 +104,50 @@ export default function Home() {
   const handleSendMessage = async () => {
     if (!selectedChat || !newMessage.trim()) return;
 
-    setLoading(true);
+    // Создаем оптимистичное сообщение
+    const optimisticMessage: Message = {
+      id: Date.now(), // Временный ID
+      text: newMessage,
+      timestamp: new Date().toISOString(),
+      fromUser: true,
+      media: [],
+      isFree: true,
+      price: 0,
+      isNew: true
+    };
+
+    // Оптимистично обновляем UI
+    setMessages(prev => [...prev, optimisticMessage]);
+    setMessageCache(prev => ({
+      ...prev,
+      [selectedChat]: [...(prev[selectedChat] || []), optimisticMessage]
+    }));
+    setNewMessage(''); // Очищаем поле ввода сразу
+
+    // Отправляем сообщение на сервер
     try {
       setError(null);
       const message = await sendMessage(selectedChat.toString(), newMessage);
       
-      // Обновляем кэш и текущие сообщения
-      const updatedMessages = [...messages, message];
+      // Заменяем оптимистичное сообщение реальным
+      setMessages(prev => 
+        prev.map(msg => msg.id === optimisticMessage.id ? message : msg)
+      );
       setMessageCache(prev => ({
         ...prev,
-        [selectedChat]: updatedMessages
+        [selectedChat]: prev[selectedChat].map(msg => 
+          msg.id === optimisticMessage.id ? message : msg
+        )
       }));
-      setMessages(updatedMessages);
-      setNewMessage('');
     } catch (error) {
+      // В случае ошибки удаляем оптимистичное сообщение
+      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+      setMessageCache(prev => ({
+        ...prev,
+        [selectedChat]: prev[selectedChat].filter(msg => msg.id !== optimisticMessage.id)
+      }));
       setError(error instanceof Error ? error.message : 'Failed to send message');
       console.error('Failed to send message:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
