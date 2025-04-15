@@ -118,6 +118,15 @@ interface ChatResponse {
   [key: string]: any; // Для захвата всех других полей
 }
 
+export interface MessagePaginationResponse {
+  messages: Message[];
+  pagination: {
+    next_id: string | null;
+    total: number;
+    hasMore: boolean;
+  } | null;
+}
+
 const handleApiResponse = async <T>(response: Response): Promise<T> => {
   const data = await response.json();
   
@@ -250,20 +259,73 @@ export async function getChats(): Promise<Chat[]> {
   });
 }
 
-export async function getChatMessages(chatId: string): Promise<Message[]> {
+/**
+ * Получает сообщения из чата
+ * @param chatId ID чата
+ * @param nextId ID сообщения для пагинации (необязательный)
+ * @param limit Количество сообщений (по умолчанию 30)
+ * @returns Массив сообщений и информация о пагинации
+ */
+export async function getChatMessages(
+  chatId: string, 
+  nextId?: string, 
+  limit: number = 30
+): Promise<MessagePaginationResponse> {
+  // Формируем query-параметры
+  const params = new URLSearchParams();
+  params.append('limit', limit.toString());
+  
+  // Добавляем nextId, если он указан
+  if (nextId) {
+    params.append('next_id', nextId);
+  }
+  
   try {
-    const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
-    return handleApiResponse<Message[]>(response);
+    const response = await fetch(`/api/onlyfans/chats/${chatId}/messages?${params.toString()}`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch messages. Status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // Проверяем и трансформируем данные
+    if (!data || !Array.isArray(data.messages)) {
+      console.error('Invalid response format:', data);
+      throw new Error('Invalid response format');
+    }
+    
+    // Проверяем и преобразуем сообщения
+    const messages: Message[] = data.messages.map((msg: any) => ({
+      id: parseInt(msg.id),
+      text: msg.text || "",
+      timestamp: msg.createdAt || msg.timestamp || new Date().toISOString(),
+      fromUser: msg.fromUser === true,
+      media: Array.isArray(msg.media) ? msg.media.map((m: any) => ({
+        id: m.id || Date.now(),
+        type: m.type || 'photo',
+        url: m.url || '',
+        files: m.files
+      })) : [],
+      price: msg.price || 0,
+      isFree: msg.isFree === undefined ? true : msg.isFree,
+      isNew: msg.isNew || false
+    }));
+    
+    // Получаем информацию о пагинации
+    const pagination = data.pagination || {
+      next_id: data.next_id || null,
+      total: data.total || messages.length,
+      hasMore: data.hasMore || !!data.next_id
+    };
+    
+    return {
+      messages,
+      pagination
+    };
   } catch (error) {
-    console.error('API Error:', error);
-    throw error instanceof Error 
-      ? error 
-      : new Error('Failed to fetch messages. Please check your connection.');
+    console.error('Error fetching chat messages:', error);
+    throw error;
   }
 }
 

@@ -5,10 +5,12 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { getChats, getChatMessages, sendMessage, checkAuth } from "@/lib/onlyfans-api";
-import type { Chat, Message, AccountInfo } from "@/lib/onlyfans-api";
+import type { Chat, Message, AccountInfo, MessagePaginationResponse } from "@/lib/onlyfans-api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import LoadingSpinner from "@/components/LoadingSpinner";
+import { toast } from "@/components/ui/use-toast";
 
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -21,17 +23,23 @@ export default function Home() {
   const [account, setAccount] = useState<AccountInfo | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [initializationProgress, setInitializationProgress] = useState(0);
-  const [messageCache, setMessageCache] = useState<Record<number, Message[]>>({});
+  const [messageCache, setMessageCache] = useState<Record<string, Message[]>>({});
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
+  const [paginationCache, setPaginationCache] = useState<Record<string, { next_id: string | null }>>({});
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const scrollPositionRef = useRef<number>(0);
 
   // Проверка авторизации и загрузка данных
   useEffect(() => {
     const initialize = async () => {
+      setLoading(true);
+      setInitializationProgress(0);
       try {
-        setError(null);
-        
         // Шаг 1: Авторизация (20%)
-        setInitializationProgress(0);
         const accountInfo = await checkAuth();
+        if (!accountInfo) {
+          throw new Error('Пользователь не авторизован');
+        }
         setAccount(accountInfo);
         setInitializationProgress(20);
         
@@ -41,30 +49,39 @@ export default function Home() {
           throw new Error('Chat list must be an array');
         }
         setChats(chatList);
-        setInitializationProgress(40);
+        setSelectedChat(chatList[0]?.id || null);
+        setInitializationProgress(50);
         
         // Шаг 3: Загрузка сообщений для каждого чата (40-100%)
         const totalChats = chatList.length;
         const progressPerChat = 60 / totalChats; // Оставшиеся 60% делим на количество чатов
         
+        const newMessageCache: Record<string, Message[]> = {};
+        const newPaginationCache: Record<string, { next_id: string | null }> = {};
+        
         await Promise.all(
           chatList.map(async (chat, index) => {
             try {
-              const messageList = await getChatMessages(chat.id.toString());
-              const sortedMessages = messageList.map(msg => ({
-                ...msg,
-                media: msg.media?.map(m => ({
-                  ...m,
-                  url: m.files?.full?.url || m.url || ''
-                })) || []
-              })).sort((a, b) => 
-                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-              );
+              const messageResponse = await getChatMessages(chat.id.toString());
               
-              setMessageCache(prev => ({
-                ...prev,
-                [chat.id]: sortedMessages
-              }));
+              // Получаем и сортируем сообщения
+              const sortedMessages = messageResponse.messages
+                .map(msg => ({
+                  ...msg,
+                  media: msg.media?.map(m => ({
+                    ...m,
+                    url: m.files?.full?.url || m.url || ''
+                  })) || []
+                }))
+                .sort((a, b) => 
+                  new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+                );
+              
+              // Сохраняем сообщения и информацию о пагинации
+              newMessageCache[chat.id.toString()] = sortedMessages;
+              newPaginationCache[chat.id.toString()] = { 
+                next_id: messageResponse.pagination?.next_id || null 
+              };
               
               // Обновляем прогресс после загрузки каждого чата
               setInitializationProgress(prev => 
@@ -72,17 +89,22 @@ export default function Home() {
               );
             } catch (error) {
               console.error(`Failed to load messages for chat ${chat.id}:`, error);
+              newMessageCache[chat.id.toString()] = [];
+              newPaginationCache[chat.id.toString()] = { next_id: null };
             }
           })
         );
-
+        
+        setMessageCache(newMessageCache);
+        setPaginationCache(newPaginationCache);
       } catch (error) {
-        setError(error instanceof Error ? error.message : 'Failed to initialize');
         console.error('Initialization failed:', error);
+        setError(error instanceof Error ? error.message : 'Failed to initialize');
       } finally {
         setAuthChecking(false);
         setLoadingChats(false);
         setInitializationProgress(100);
+        setLoading(false);
       }
     };
 
@@ -93,12 +115,89 @@ export default function Home() {
   useEffect(() => {
     if (!selectedChat) return;
     
-    // Теперь просто берем сообщения из кэша
-    const cachedMessages = messageCache[selectedChat];
-    if (cachedMessages) {
-      setMessages(cachedMessages);
+    // Загружаем сообщения, если их еще нет в кэше
+    if (!messageCache[selectedChat.toString()]) {
+      (async () => {
+        try {
+          setLoading(true);
+          const response = await getChatMessages(selectedChat.toString());
+          
+          setMessageCache(prev => ({
+            ...prev,
+            [selectedChat.toString()]: response.messages
+          }));
+          
+          setPaginationCache(prev => ({
+            ...prev,
+            [selectedChat.toString()]: { 
+              next_id: response.pagination?.next_id || null 
+            }
+          }));
+          
+          setMessages(response.messages);
+        } catch (error) {
+          console.error(`Failed to fetch messages for chat ${selectedChat}:`, error);
+          setError(error instanceof Error ? error.message : 'Unknown error');
+        } finally {
+          setLoading(false);
+        }
+      })();
+    } else {
+      // Используем закэшированные сообщения
+      setMessages(messageCache[selectedChat.toString()]);
     }
-  }, [selectedChat, messageCache]);
+  }, [selectedChat]);
+
+  // Функция для загрузки предыдущих сообщений
+  const loadEarlierMessages = async () => {
+    if (!selectedChat || loadingMore || !paginationCache[selectedChat.toString()].next_id) {
+      return;
+    }
+    
+    setLoadingMore(true);
+    
+    try {
+      const nextId = paginationCache[selectedChat.toString()].next_id;
+      if (!nextId) {
+        // Больше нет сообщений для загрузки
+        setLoadingMore(false);
+        return;
+      }
+      
+      const messagesResponse = await getChatMessages(
+        selectedChat.toString(), 
+        nextId
+      );
+      
+      if (messagesResponse?.messages?.length) {
+        setMessageCache(prev => ({
+          ...prev,
+          [selectedChat.toString()]: [
+            ...messagesResponse.messages,
+            ...(prev[selectedChat.toString()] || [])
+          ]
+        }));
+        
+        setPaginationCache(prev => ({
+          ...prev,
+          [selectedChat.toString()]: { 
+            next_id: messagesResponse.pagination?.next_id || null 
+          }
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to load earlier messages:', error);
+      setError('Не удалось загрузить предыдущие сообщения');
+      
+      // Если произошла ошибка, сбрасываем пагинацию для предотвращения повторных запросов
+      setPaginationCache(prev => ({
+        ...prev,
+        [selectedChat.toString()]: { next_id: null }
+      }));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   // Отправка сообщения
   const handleSendMessage = async () => {
@@ -120,7 +219,7 @@ export default function Home() {
     setMessages(prev => [...prev, optimisticMessage]);
     setMessageCache(prev => ({
       ...prev,
-      [selectedChat]: [...(prev[selectedChat] || []), optimisticMessage]
+      [selectedChat.toString()]: [...(prev[selectedChat.toString()] || []), optimisticMessage]
     }));
     setNewMessage(''); // Очищаем поле ввода сразу
 
@@ -135,7 +234,7 @@ export default function Home() {
       );
       setMessageCache(prev => ({
         ...prev,
-        [selectedChat]: prev[selectedChat].map(msg => 
+        [selectedChat.toString()]: prev[selectedChat.toString()].map(msg => 
           msg.id === optimisticMessage.id ? message : msg
         )
       }));
@@ -144,10 +243,20 @@ export default function Home() {
       setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
       setMessageCache(prev => ({
         ...prev,
-        [selectedChat]: prev[selectedChat].filter(msg => msg.id !== optimisticMessage.id)
+        [selectedChat.toString()]: prev[selectedChat.toString()].filter(msg => msg.id !== optimisticMessage.id)
       }));
       setError(error instanceof Error ? error.message : 'Failed to send message');
       console.error('Failed to send message:', error);
+    }
+  };
+
+  // Обработчик скролла для загрузки более ранних сообщений
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    
+    // Если скроллим вверх и находимся вблизи верха контейнера
+    if (container.scrollTop < 100) {
+      loadEarlierMessages();
     }
   };
 
@@ -183,8 +292,6 @@ export default function Home() {
     );
   }
 
-  console.log('Chats during render:', chats);
-
   return (
     <div className="flex h-screen">
       {/* Sidebar с чатами */}
@@ -207,6 +314,11 @@ export default function Home() {
                   <div><strong>Chat {index + 1} (ID: {chat.id}):</strong></div>
                   <div>Username: "{chat.username}"</div>
                   <div>Username Length: {chat.username ? chat.username.length : 0}</div>
+                  
+                  {/* Добавим информацию о пагинации */}
+                  <div>
+                    Pagination ID: {paginationCache[chat.id.toString()]?.next_id || 'null'}
+                  </div>
                   
                   {/* Добавим кнопку для копирования ID чата */}
                   <button 
@@ -293,11 +405,23 @@ export default function Home() {
           </h1>
         </div>
         
-        <div className="flex-1 overflow-y-auto">
+        <div 
+          ref={messagesContainerRef}
+          className="flex-1 overflow-y-auto" 
+          onScroll={handleScroll}
+        >
           <div className="p-4 space-y-4">
-            {loading && !messages.length ? (
-              <div className="text-center p-4">Загрузка сообщений...</div>
-            ) : messages.length === 0 ? (
+            {loadingMore && (
+              <div className="text-center mb-4">
+                <LoadingSpinner size="sm" text="Загрузка предыдущих сообщений..." />
+              </div>
+            )}
+            {loading && (
+              <div className="text-center p-4">
+                <LoadingSpinner size="md" text="Загрузка сообщений..." />
+              </div>
+            )}
+            {!loading && messages.length === 0 ? (
               <div className="text-center p-4 text-gray-500">
                 {selectedChat ? 'Нет сообщений' : 'Выберите чат для просмотра сообщений'}
               </div>
