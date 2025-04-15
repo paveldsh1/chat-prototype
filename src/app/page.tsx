@@ -48,10 +48,15 @@ export default function Home() {
         setError(null);
         setLoadingChats(true);
         const chatList = await getChats();
+        console.log('Chats before setState:', chatList);
+        console.log('Is chatList array?', Array.isArray(chatList));
+        if (!Array.isArray(chatList)) {
+          throw new Error('Chat list must be an array');
+        }
         setChats(chatList);
       } catch (error) {
+        console.error('Error loading chats:', error);
         setError(error instanceof Error ? error.message : 'Failed to load chats');
-        console.error('Failed to load chats:', error);
       } finally {
         setLoadingChats(false);
       }
@@ -124,6 +129,8 @@ export default function Home() {
       </div>
     );
   }
+
+  console.log('Chats during render:', chats);
 
   return (
     <div className="flex h-screen">
