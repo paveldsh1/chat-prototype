@@ -42,6 +42,55 @@ const videoStyle: CSSProperties = {
   borderRadius: '0.375rem',
 };
 
+// Интерфейс компонента разделителя даты
+interface DateSeparatorProps {
+  date: string;
+}
+
+// Компонент разделителя даты между сообщениями
+const DateSeparator: React.FC<DateSeparatorProps> = ({ date }) => {
+  return (
+    <div className="flex items-center justify-center my-4">
+      <div className="bg-gray-200 text-gray-600 text-xs font-medium px-3 py-1 rounded-full">
+        {date}
+      </div>
+    </div>
+  );
+};
+
+// Функция форматирования даты для разделителя
+const formatDateForSeparator = (dateString: string): string => {
+  const date = new Date(dateString);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  
+  // Форматируем дату в зависимости от того, когда было отправлено сообщение
+  if (date.toDateString() === today.toDateString()) {
+    return 'Сегодня';
+  } else if (date.toDateString() === yesterday.toDateString()) {
+    return 'Вчера';
+  } else {
+    // Форматирование даты в локализованном формате
+    return date.toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  }
+};
+
+// Функция для проверки, нужно ли показывать разделитель даты
+const shouldShowDateSeparator = (currentDate: string, previousDate?: string): boolean => {
+  if (!previousDate) return true; // Показываем разделитель для первого сообщения
+  
+  const current = new Date(currentDate);
+  const previous = new Date(previousDate);
+  
+  // Сравниваем даты без учета времени
+  return current.toDateString() !== previous.toDateString();
+};
+
 interface MessageProps {
   message: {
     id: string;
@@ -65,6 +114,8 @@ interface MessageProps {
     originalMediaUrl?: string | null; // Оригинальный URL для видео и изображений
     media?: Array<MediaItem>;
   };
+  previousMessageDate?: string; // Дата предыдущего сообщения для сравнения
+  showDateSeparator?: boolean; // Флаг, показывающий, нужно ли отображать разделитель даты
 }
 
 // Интерфейс для медиа-элементов
@@ -200,11 +251,15 @@ const MediaPlaceholder: React.FC<MediaPlaceholderProps> = ({ loading, error, mes
   );
 };
 
-export default function MessageItem({ message }: MessageProps) {
+export default function MessageItem({ message, previousMessageDate, showDateSeparator = true }: MessageProps) {
   const formattedTime = new Date(message.createdAt).toLocaleTimeString([], { 
     hour: '2-digit', 
     minute: '2-digit' 
   });
+
+  // Проверяем, нужно ли показать разделитель даты
+  const needsDateSeparator = showDateSeparator && 
+    shouldShowDateSeparator(message.createdAt, previousMessageDate);
 
   // Отладочное логирование
   console.log(`Rendering MessageItem, has media: ${Boolean(message.media?.length)}`);
@@ -467,46 +522,51 @@ export default function MessageItem({ message }: MessageProps) {
     console.log('Медиа для просмотра:', medias);
   };
   
-  // Рендерим сообщение
+  // Рендерим сообщение с возможным разделителем даты
   return (
-    <div className={`flex mb-4 ${message.isFromUser ? 'justify-end' : 'justify-start'}`}>
-      {!message.isFromUser && (
-        <div className="mr-2 flex-shrink-0">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={message.fromUser.avatar || ''} />
-            <AvatarFallback>{message.fromUser.name.charAt(0)}</AvatarFallback>
-          </Avatar>
-        </div>
+    <>
+      {needsDateSeparator && (
+        <DateSeparator date={formatDateForSeparator(message.createdAt)} />
       )}
-      
-      <div className={`relative max-w-[75%] ${message.isFromUser ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-900'} rounded-lg px-4 py-2 shadow`}>
-        {message.text && <p className="mb-1">{message.text}</p>}
+      <div className={`flex mb-4 ${message.isFromUser ? 'justify-end' : 'justify-start'}`}>
+        {!message.isFromUser && (
+          <div className="mr-2 flex-shrink-0">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={message.fromUser.avatar || ''} />
+              <AvatarFallback>{message.fromUser.name.charAt(0)}</AvatarFallback>
+            </Avatar>
+          </div>
+        )}
         
-        {message.media && message.media.length > 0 && (() => {
-          // Собираем предварительно все рендеры медиа-элементов
-          const renderedItems = message.media
-            .map((mediaItem, index) => {
-              const renderedItem = renderMediaItem(mediaItem, index);
-              return renderedItem ? (
-                <div key={`${mediaItem.id}-${index}`} className="mb-2">
-                  {renderedItem}
-                </div>
-              ) : null;
-            })
-            .filter(Boolean); // Оставляем только не-null элементы
+        <div className={`relative max-w-[75%] ${message.isFromUser ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-900'} rounded-lg px-4 py-2 shadow`}>
+          {message.text && <p className="mb-1">{message.text}</p>}
           
-          // Если после фильтрации не осталось элементов, ничего не рендерим
-          return renderedItems.length > 0 ? (
-            <div className="mt-2">
-              {renderedItems}
-            </div>
-          ) : null;
-        })()}
-        
-        <div className={`text-xs mt-1 ${message.isFromUser ? 'text-blue-100' : 'text-gray-500'}`}>
-          {formattedTime}
+          {message.media && message.media.length > 0 && (() => {
+            // Собираем предварительно все рендеры медиа-элементов
+            const renderedItems = message.media
+              .map((mediaItem, index) => {
+                const renderedItem = renderMediaItem(mediaItem, index);
+                return renderedItem ? (
+                  <div key={`${mediaItem.id}-${index}`} className="mb-2">
+                    {renderedItem}
+                  </div>
+                ) : null;
+              })
+              .filter(Boolean); // Оставляем только не-null элементы
+            
+            // Если после фильтрации не осталось элементов, ничего не рендерим
+            return renderedItems.length > 0 ? (
+              <div className="mt-2">
+                {renderedItems}
+              </div>
+            ) : null;
+          })()}
+          
+          <div className={`text-xs mt-1 ${message.isFromUser ? 'text-blue-100' : 'text-gray-500'}`}>
+            {formattedTime}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 } 

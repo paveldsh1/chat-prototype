@@ -125,9 +125,17 @@ export default function ChatPage() {
             Нет сообщений
           </div>
         ) : (
-          messages.map((message) => (
-            <MessageItem key={message.id} message={message} />
-          ))
+          messages.map((message, index) => {
+            // Определяем дату предыдущего сообщения (если оно есть)
+            const previousMessage = index > 0 ? messages[index - 1] : undefined;
+            return (
+              <MessageItem 
+                key={message.id} 
+                message={message} 
+                previousMessageDate={previousMessage?.createdAt}
+              />
+            );
+          })
         )}
         <div ref={messagesEndRef} />
       </div>
