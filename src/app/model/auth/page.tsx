@@ -4,24 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
 import { authenticateModel, pollAuthStatus } from "@/lib/onlyfans-api";
 import type { ModelAuth } from "@/lib/onlyfans-api";
-
-const PROXY_COUNTRIES = [
-  { value: 'us', label: 'United States' },
-  { value: 'uk', label: 'United Kingdom' },
-  { value: 'de', label: 'Germany' },
-  { value: 'es', label: 'Spain' },
-  { value: 'ua', label: 'Ukraine' },
-] as const;
 
 export default function ModelAuth() {
   const [formData, setFormData] = useState<ModelAuth>({
     email: '',
     password: '',
-    proxyCountry: 'us',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,28 +93,6 @@ export default function ModelAuth() {
               required
               disabled={loading}
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">Страна прокси</label>
-            <Select
-              value={formData.proxyCountry}
-              onValueChange={(value: ModelAuth['proxyCountry']) => 
-                setFormData(prev => ({ ...prev, proxyCountry: value }))
-              }
-              disabled={loading}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите страну" />
-              </SelectTrigger>
-              <SelectContent>
-                {PROXY_COUNTRIES.map(country => (
-                  <SelectItem key={country.value} value={country.value}>
-                    {country.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           <Button 

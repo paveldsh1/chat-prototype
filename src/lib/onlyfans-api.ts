@@ -56,7 +56,6 @@ export interface AuthResponse {
 export interface ModelAuth {
   email: string;
   password: string;
-  proxyCountry: 'us' | 'uk' | 'de' | 'es' | 'ua';
 }
 
 interface ApiError {

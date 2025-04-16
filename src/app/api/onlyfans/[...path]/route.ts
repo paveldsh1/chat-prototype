@@ -8,6 +8,82 @@ async function handler(
   req: NextRequest,
   { params }: { params: { path: string[] } }
 ) {
+  // Обработка запросов прокси для изображений с IP ограничениями
+  if (params.path[0] === 'proxy') {
+    try {
+      const url = req.nextUrl.searchParams.get('url');
+      const reqIp = req.nextUrl.searchParams.get('ip'); // Требуемый IP из URL
+      
+      if (!url) {
+        return NextResponse.json(
+          { error: 'URL parameter is required' },
+          { status: 400 }
+        );
+      }
+      
+      console.log(`[Proxy] Trying to proxy URL: ${url}`);
+      
+      // Устанавливаем IP-адрес из URL в X-Forwarded-For для подмены нашего IP 
+      // на тот, который ожидается в ссылке
+      const headers: HeadersInit = {
+        'User-Agent': req.headers.get('user-agent') || 'Mozilla/5.0',
+        'Referer': 'https://onlyfans.com/',
+        'Origin': 'https://onlyfans.com',
+      };
+      
+      // Если в URL был указан IP, используем его для подмены
+      if (reqIp) {
+        headers['X-Forwarded-For'] = reqIp;
+        headers['X-Real-IP'] = reqIp;
+        console.log(`[Proxy] Using IP: ${reqIp}`);
+      } else {
+        // Извлекаем IP из URL, если он там есть в формате IpAddress
+        const ipMatch = url.match(/"IpAddress".*?"AWS:SourceIp"\s*:\s*"([^"\/]+)"/);
+        if (ipMatch && ipMatch[1]) {
+          const extractedIp = ipMatch[1].replace(/\\\/\d+$/, ''); // Удаляем маску подсети если есть
+          headers['X-Forwarded-For'] = extractedIp;
+          headers['X-Real-IP'] = extractedIp;
+          console.log(`[Proxy] Extracted and using IP: ${extractedIp}`);
+        }
+      }
+      
+      // Fetch оригинальный URL с подмененным IP
+      const response = await fetch(url, {
+        headers,
+        cache: 'no-store',
+      });
+      
+      if (!response.ok) {
+        console.error(`[Proxy] Failed with status: ${response.status}`);
+        return NextResponse.json(
+          { error: `Proxy request failed with status: ${response.status}` },
+          { status: response.status }
+        );
+      }
+      
+      // Получаем буфер изображения
+      const buffer = await response.arrayBuffer();
+      
+      // Определяем тип контента
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      
+      // Возвращаем изображение клиенту
+      return new NextResponse(buffer, {
+        status: 200,
+        headers: {
+          'Content-Type': contentType,
+          'Cache-Control': 'public, max-age=86400',
+        },
+      });
+    } catch (error) {
+      console.error('[Proxy] Error:', error);
+      return NextResponse.json(
+        { error: 'Failed to proxy content' },
+        { status: 500 }
+      );
+    }
+  }
+
   // Обработка авторизации модели
   if (params.path[0] === 'authenticate') {
     if (req.method === 'POST') {
