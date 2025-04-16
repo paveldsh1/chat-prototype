@@ -408,7 +408,17 @@ export default function Home() {
           // Добавим логирование для отладки
           console.log(`Message ${uniqueKey} from user: ${message.fromUser}, will display on ${message.fromUser ? 'right' : 'left'}`);
 
-          return <MessageItem key={uniqueKey} message={messageData} />;
+          // Определяем дату предыдущего сообщения (если оно есть)
+          const previousMessage = index > 0 ? messages[index - 1] : undefined;
+          const previousMessageDate = previousMessage?.timestamp;
+
+          return (
+            <MessageItem 
+              key={uniqueKey} 
+              message={messageData} 
+              previousMessageDate={previousMessageDate}
+            />
+          );
         })}
       </div>
     );
