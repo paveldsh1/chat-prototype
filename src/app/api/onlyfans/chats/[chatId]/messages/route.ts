@@ -57,31 +57,50 @@ export async function GET(
       throw new Error('Invalid response format from API');
     }
     
+    // Исправляем экранированные URL-адреса в ответе API
+    const fixedRawData = fixEscapedUrls(rawData);
+    
     // Преобразуем ответ API в формат, ожидаемый клиентом
-    const messages = rawData.data.list.map((msg: any) => ({
-      id: msg.id,
-      text: msg.text?.replace(/<[^>]*>/g, '') || '', // Удаляем HTML теги
-      fromUser: {
-        id: msg.fromUser?.id || '',
-        name: msg.fromUser?.name || '',
-        username: msg.fromUser?._view || '',
-        avatar: null
-      },
-      mediaType: msg.media && msg.media.length > 0 ? msg.media[0].type : null,
-      mediaUrl: msg.media && msg.media.length > 0 ? msg.media[0].files?.full?.url : null,
-      createdAt: msg.createdAt || msg.timestamp || new Date().toISOString(),
-      isFromUser: msg.fromUser?.id !== parseInt(params.chatId),
-      price: msg.price || 0,
-      isFree: msg.isFree !== false,
-      isOpened: msg.isOpened !== false
-    }));
+    const messages = fixedRawData.data.list.map((msg: any) => {
+      console.log('Processing message from API:', msg.id, 'Has media:', Boolean(msg.media?.length));
+      
+      // Если есть медиа, логируем для отладки
+      if (msg.media && msg.media.length > 0) {
+        console.log(`Message ${msg.id} media count: ${msg.media.length}`);
+        console.log(`Media sample:`, JSON.stringify(msg.media[0]).substring(0, 300));
+      }
+      
+      return {
+        id: msg.id,
+        text: msg.text?.replace(/<[^>]*>/g, '') || '', // Удаляем HTML теги
+        fromUser: {
+          id: msg.fromUser?.id || '',
+          name: msg.fromUser?.name || '',
+          username: msg.fromUser?._view || '',
+          avatar: null
+        },
+        mediaType: msg.media && msg.media.length > 0 ? msg.media[0].type : null,
+        mediaUrl: msg.media && msg.media.length > 0 ? 
+          (msg.media[0].files?.full?.url || msg.media[0].files?.preview?.url) : null,
+        createdAt: msg.createdAt || msg.timestamp || new Date().toISOString(),
+        isFromUser: msg.fromUser?.id !== parseInt(params.chatId),
+        price: msg.price || 0,
+        isFree: msg.isFree !== false,
+        isOpened: msg.isOpened !== false,
+        // Важно! Добавляем массив media для корректной обработки в компоненте
+        media: msg.media || [],
+        // Добавляем mediaCount для отображения количества медиа
+        mediaCount: msg.media?.length || 0,
+        isMediaReady: msg.isMediaReady
+      };
+    });
 
     // Добавляем информацию о пагинации
     return NextResponse.json({
       messages,
       pagination: {
-        next_id: rawData._pagination?.next_page ? 
-          new URL(rawData._pagination.next_page).searchParams.get('id') : 
+        next_id: fixedRawData._pagination?.next_page ? 
+          new URL(fixedRawData._pagination.next_page).searchParams.get('id') : 
           null
       }
     });
@@ -192,4 +211,27 @@ function generateMockMessages(chatId: string, count: number, startIdStr?: string
       isOpened: true
     };
   });
+}
+
+// Функция для исправления URL с экранированными слешами
+function fixEscapedUrls(obj: any): any {
+  if (!obj) return obj;
+  
+  if (typeof obj === 'string' && obj.includes('\\/')) {
+    return obj.replace(/\\\//g, '/');
+  }
+  
+  if (Array.isArray(obj)) {
+    return obj.map(item => fixEscapedUrls(item));
+  }
+  
+  if (typeof obj === 'object') {
+    const result = {...obj};
+    for (const key in result) {
+      result[key] = fixEscapedUrls(result[key]);
+    }
+    return result;
+  }
+  
+  return obj;
 } 
