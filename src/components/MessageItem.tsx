@@ -79,14 +79,8 @@ function proxyImageUrl(url: string): string {
     return '';
   }
   
-  try {
-    // Кодируем URL для передачи в query-параметре
-    const encodedUrl = encodeURIComponent(url);
-    return `/api/proxy-image?url=${encodedUrl}`;
-  } catch (e) {
-    console.error('Error proxying URL:', e);
-    return '';
-  }
+  // Просто возвращаем исходный URL без проксирования
+  return url;
 }
 
 /**
@@ -104,9 +98,10 @@ function getMediaFileUrl(media: MediaItem | undefined): string {
     return url ? url.replace(/\\\//g, '/') : '';
   }
   
-  // Для изображений используем прокси (исправлено - используем full вместо source)
+  // Для изображений больше не используем прокси
   if (media.type === 'photo' && media.files?.full?.url) {
-    return proxyImageUrl(media.files.full.url);
+    const url = media.files.full.url;
+    return url ? url.replace(/\\\//g, '/') : '';
   }
   
   return '';
@@ -135,8 +130,8 @@ function getThumbFileUrl(media: MediaItem): string {
     return '';
   }
   
-  // Проксируем URL через наш сервер
-  return url ? proxyImageUrl(url) : '';
+  // Больше не проксируем URL
+  return url;
 }
 
 export default function MessageItem({ message }: MessageProps) {
@@ -191,8 +186,8 @@ export default function MessageItem({ message }: MessageProps) {
       return '';
     }
     
-    // Проксируем URL через наш сервер
-    return url ? proxyImageUrl(url) : '';
+    // Больше не проксируем URL
+    return url;
   };
 
   // Проверяем, является ли медиа доступным
@@ -270,12 +265,13 @@ export default function MessageItem({ message }: MessageProps) {
     // Преобразуем mediaUrl в оригинальный URL (убираем /api/proxy-image?url=...)
     const extractOriginalUrl = (proxyUrl: string): string | null => {
       try {
+        // Проверка старого формата с прокси (для обратной совместимости)
         const url = new URL(proxyUrl);
         if (url.pathname === '/api/proxy-image') {
           return decodeURIComponent(url.searchParams.get('url') || '');
         }
         return proxyUrl;
-      } catch {
+      } catch (error) {
         return null;
       }
     };
@@ -284,81 +280,6 @@ export default function MessageItem({ message }: MessageProps) {
     const extractedOriginalUrl = originalUrl || extractOriginalUrl(mediaUrl);
     console.log('Original URL:', extractedOriginalUrl);
     
-    // Пробуем получить информацию об ошибке от прокси-сервера
-    let fallbackUrlFromProxy: string | null = null;
-    
-    try {
-      // Проверяем, вернул ли прокси-сервер JSON с информацией об ошибке
-      const response = await fetch(mediaUrl);
-      
-      // Если прокси вернул JSON, значит это объяснение ошибки
-      if (response.headers.get('content-type')?.includes('application/json')) {
-        const errorData = await response.json();
-        console.log('Proxy error details:', errorData);
-        
-        // Если есть fallbackUrl в ответе, используем его
-        if (errorData.fallbackUrl) {
-          fallbackUrlFromProxy = errorData.fallbackUrl;
-          console.log('Found fallbackUrl in proxy response:', fallbackUrlFromProxy);
-        }
-      }
-    } catch (err) {
-      // Игнорируем ошибки при проверке ответа прокси
-      console.log('Error checking proxy response:', err);
-    }
-    
-    // Если прокси предложил fallbackUrl, пробуем его использовать
-    if (fallbackUrlFromProxy) {
-      // Используем напрямую ответ от прокси, минуя проксирование еще раз
-      const proxyFallbackUrl = proxyImageUrl(fallbackUrlFromProxy);
-      console.log('Using proxy fallback URL:', proxyFallbackUrl);
-      
-      try {
-        // Создаем новый элемент img для предварительной загрузки
-        const newImg = new Image();
-        
-        // Настраиваем обработчики событий
-        newImg.onload = () => {
-          console.log('Fallback URL loaded successfully');
-          if (target.parentElement) {
-            target.src = proxyFallbackUrl;
-            target.style.opacity = '1';
-            // Сбрасываем флаг обработки ошибки, чтобы можно было повторно обработать в случае ошибки
-            delete target.dataset.errorProcessed;
-          }
-        };
-        
-        newImg.onerror = () => {
-          console.log('Fallback URL also failed, trying direct URL approach');
-          
-          // Если fallback тоже не работает, пробуем добавить параметры для обхода кеша
-          const cacheBusterUrl = `${proxyFallbackUrl}&t=${Date.now()}&retry=true`;
-          const finalAttemptImg = new Image();
-          
-          finalAttemptImg.onload = () => {
-            console.log('Cache busted fallback URL loaded successfully');
-            if (target.parentElement) {
-              target.src = cacheBusterUrl;
-              target.style.opacity = '1';
-            }
-          };
-          
-          finalAttemptImg.onerror = () => {
-            console.log('All fallback attempts failed, showing placeholder');
-            tryFindAlternativeUrl(alternatives, extractedOriginalUrl, showPlaceholder);
-          };
-          
-          finalAttemptImg.src = cacheBusterUrl;
-        };
-        
-        // Начинаем загрузку изображения
-        newImg.src = proxyFallbackUrl;
-        return;
-      } catch (e) {
-        console.error('Error trying fallback URL from proxy:', e);
-      }
-    }
-    
     // Функция для поиска альтернативного URL
     const tryFindAlternativeUrl = (alternatives: string[], originalUrl: string | null, showPlaceholder: () => void) => {
       // Пытаемся найти медиа-элемент, соответствующий URL
@@ -366,7 +287,7 @@ export default function MessageItem({ message }: MessageProps) {
         const url = m.url || m.files?.full?.url || '';
         // Проверяем соответствие оригинальному URL или текущему mediaUrl
         return (originalUrl && url && originalUrl.includes(url)) || 
-               (mediaUrl && mediaUrl.includes(encodeURIComponent(url)));
+                (mediaUrl && url && mediaUrl.includes(url));
       });
       
       if (!media) {
@@ -405,13 +326,13 @@ export default function MessageItem({ message }: MessageProps) {
       
       try {
         // Создаем новый элемент для проверки URL
-        const testImg = new Image();
+        const testImg = document.createElement('img');
         
         // Обработчик успешной загрузки
         testImg.onload = () => {
           console.log('Alternative URL loaded successfully:', currentUrl);
           if (target.parentElement) {
-            target.src = proxyImageUrl(currentUrl);
+            target.src = currentUrl;
             target.style.opacity = '1';
           }
         };
@@ -423,8 +344,8 @@ export default function MessageItem({ message }: MessageProps) {
           tryNextUrl(urls, index + 1, showPlaceholder);
         };
         
-        // Загружаем изображение через прокси
-        testImg.src = proxyImageUrl(currentUrl);
+        // Загружаем изображение без прокси
+        testImg.src = currentUrl;
       } catch (err) {
         console.error('Error checking alternative URL:', err);
         // При ошибке переходим к следующему URL
@@ -432,10 +353,8 @@ export default function MessageItem({ message }: MessageProps) {
       }
     };
     
-    // Если нет fallbackUrl от прокси, пробуем найти альтернативные URL
-    if (!fallbackUrlFromProxy) {
-      tryFindAlternativeUrl(alternatives, extractedOriginalUrl, showPlaceholder);
-    }
+    // Пробуем найти альтернативные URL
+    tryFindAlternativeUrl(alternatives, extractedOriginalUrl, showPlaceholder);
   };
   
   // Функция для отображения заглушки вместо видео
@@ -592,7 +511,7 @@ export default function MessageItem({ message }: MessageProps) {
                     src={mediaUrl}
                     controls
                     className="rounded max-w-full"
-                    poster={media.files?.preview?.url ? proxyImageUrl(media.files.preview.url) : undefined}
+                    poster={media.files?.preview?.url || undefined}
                     onError={(e) => {
                       console.error('Video failed to load:', mediaUrl);
                       const videoElement = e.currentTarget;
