@@ -480,12 +480,6 @@ export default function MessageItem({ message }: MessageProps) {
       )}
       
       <div className={`relative max-w-[75%] ${message.isFromUser ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-900'} rounded-lg px-4 py-2 shadow`}>
-        {!message.isFree && message.price > 0 && (
-          <div className="absolute -top-5 right-0 bg-yellow-400 text-xs text-black font-semibold px-2 py-0.5 rounded-full">
-            ${message.price.toFixed(2)}
-          </div>
-        )}
-        
         {message.text && <p className="mb-1">{message.text}</p>}
         
         {message.media && message.media.length > 0 && (() => {
