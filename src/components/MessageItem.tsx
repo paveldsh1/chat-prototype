@@ -1,5 +1,10 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PhotoIcon } from "@heroicons/react/24/outline";
+import { ReactElement, useCallback, useEffect, useRef, useState } from 'react';
+import { formatDistanceToNow } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import classNames from 'classnames';
+import Image from 'next/image';
 
 interface MessageProps {
   message: {
@@ -20,40 +25,14 @@ interface MessageProps {
     isOpened: boolean;
     mediaCount?: number; // Добавляем поле mediaCount для поддержки API OnlyFans
     isMediaReady?: boolean; // Флаг готовности медиа из API
-    media?: Array<{
-      id: string | number;
-      type: string;
-      url?: string;
-      isReady?: boolean; // Флаг готовности отдельного медиа-элемента
-      hasError?: boolean; // Флаг ошибки медиа-элемента
-      files?: {
-        full?: {
-          url: string | null;
-          width?: number;
-          height?: number;
-        };
-        thumb?: {
-          url: string | null;
-        };
-        preview?: {
-          url: string | null;
-        };
-        squarePreview?: {
-          url: string | null;
-        };
-      };
-      canView?: boolean;
-      duration?: number;
-      videoSources?: {
-        "720"?: string | null;
-        "240"?: string | null;
-      };
-    }>;
+    alternativeMediaUrls?: string[]; // Альтернативные URL для видео и изображений
+    originalMediaUrl?: string | null; // Оригинальный URL для видео и изображений
+    media?: Array<MediaItem>;
   };
 }
 
-// Определяем тип для медиа-элементов
-type MediaItem = {
+// Интерфейс для медиа-элементов
+interface MediaItem {
   id: string | number;
   type: string;
   url?: string;
@@ -81,7 +60,9 @@ type MediaItem = {
     "720"?: string | null;
     "240"?: string | null;
   };
-};
+  alternatives?: string[]; // Альтернативные URL для видео и изображений
+  originalUrl?: string | null; // Оригинальный URL для видео и изображений
+}
 
 /**
  * Функция для проксирования URL через наш сервер
@@ -261,8 +242,14 @@ export default function MessageItem({ message }: MessageProps) {
   };
 
   // Обработка ошибок прокси-сервера
-  const handleProxyError = async (e: React.SyntheticEvent<HTMLImageElement, Event>, mediaUrl: string | null) => {
-    console.error('Image failed to load:', mediaUrl);
+  const handleProxyError = async (
+    e: React.SyntheticEvent<HTMLImageElement | HTMLVideoElement, Event>, 
+    mediaUrl: string | null, 
+    alternatives: string[] = [], 
+    originalUrl: string | null = null, 
+    showPlaceholder: () => void
+  ) => {
+    console.error('Media failed to load:', mediaUrl);
     
     // Сохраняем ссылку на элемент изображения сразу в начале функции
     const target = e.currentTarget;
@@ -279,6 +266,23 @@ export default function MessageItem({ message }: MessageProps) {
     
     // Устанавливаем низкую прозрачность на время обработки ошибки
     target.style.opacity = '0.2';
+    
+    // Преобразуем mediaUrl в оригинальный URL (убираем /api/proxy-image?url=...)
+    const extractOriginalUrl = (proxyUrl: string): string | null => {
+      try {
+        const url = new URL(proxyUrl);
+        if (url.pathname === '/api/proxy-image') {
+          return decodeURIComponent(url.searchParams.get('url') || '');
+        }
+        return proxyUrl;
+      } catch {
+        return null;
+      }
+    };
+    
+    // Оригинальный URL до проксирования (заменим на параметр)
+    const extractedOriginalUrl = originalUrl || extractOriginalUrl(mediaUrl);
+    console.log('Original URL:', extractedOriginalUrl);
     
     // Пробуем получить информацию об ошибке от прокси-сервера
     let fallbackUrlFromProxy: string | null = null;
@@ -305,22 +309,50 @@ export default function MessageItem({ message }: MessageProps) {
     
     // Если прокси предложил fallbackUrl, пробуем его использовать
     if (fallbackUrlFromProxy) {
+      // Используем напрямую ответ от прокси, минуя проксирование еще раз
+      const proxyFallbackUrl = proxyImageUrl(fallbackUrlFromProxy);
+      console.log('Using proxy fallback URL:', proxyFallbackUrl);
+      
       try {
         // Создаем новый элемент img для предварительной загрузки
         const newImg = new Image();
-        newImg.onerror = () => {
-          console.log('Fallback URL from proxy also failed:', fallbackUrlFromProxy);
-          // Если fallback тоже не сработал, продолжаем обычную обработку ошибки
-          tryFindAlternativeUrl();
-        };
+        
+        // Настраиваем обработчики событий
         newImg.onload = () => {
-          console.log('Fallback URL from proxy loaded successfully');
+          console.log('Fallback URL loaded successfully');
           if (target.parentElement) {
-            target.src = proxyImageUrl(fallbackUrlFromProxy!);
+            target.src = proxyFallbackUrl;
             target.style.opacity = '1';
+            // Сбрасываем флаг обработки ошибки, чтобы можно было повторно обработать в случае ошибки
+            delete target.dataset.errorProcessed;
           }
         };
-        newImg.src = proxyImageUrl(fallbackUrlFromProxy);
+        
+        newImg.onerror = () => {
+          console.log('Fallback URL also failed, trying direct URL approach');
+          
+          // Если fallback тоже не работает, пробуем добавить параметры для обхода кеша
+          const cacheBusterUrl = `${proxyFallbackUrl}&t=${Date.now()}&retry=true`;
+          const finalAttemptImg = new Image();
+          
+          finalAttemptImg.onload = () => {
+            console.log('Cache busted fallback URL loaded successfully');
+            if (target.parentElement) {
+              target.src = cacheBusterUrl;
+              target.style.opacity = '1';
+            }
+          };
+          
+          finalAttemptImg.onerror = () => {
+            console.log('All fallback attempts failed, showing placeholder');
+            tryFindAlternativeUrl(alternatives, extractedOriginalUrl, showPlaceholder);
+          };
+          
+          finalAttemptImg.src = cacheBusterUrl;
+        };
+        
+        // Начинаем загрузку изображения
+        newImg.src = proxyFallbackUrl;
         return;
       } catch (e) {
         console.error('Error trying fallback URL from proxy:', e);
@@ -328,76 +360,146 @@ export default function MessageItem({ message }: MessageProps) {
     }
     
     // Функция для поиска альтернативного URL
-    const tryFindAlternativeUrl = () => {
+    const tryFindAlternativeUrl = (alternatives: string[], originalUrl: string | null, showPlaceholder: () => void) => {
       // Пытаемся найти медиа-элемент, соответствующий URL
       const media = message.media?.find(m => {
         const url = m.url || m.files?.full?.url || '';
-        return mediaUrl?.includes(encodeURIComponent(url));
+        // Проверяем соответствие оригинальному URL или текущему mediaUrl
+        return (originalUrl && url && originalUrl.includes(url)) || 
+               (mediaUrl && mediaUrl.includes(encodeURIComponent(url)));
       });
       
       if (!media) {
         // Если не нашли соответствующий медиа-элемент, показываем заглушку
-        showImagePlaceholder(target);
+        showPlaceholder();
         return;
       }
       
-      // Пытаемся использовать альтернативные ссылки
-      const fallbackUrl = media.files?.preview?.url || 
-                          media.files?.squarePreview?.url || 
-                          media.files?.thumb?.url;
-                          
-      if (fallbackUrl && mediaUrl !== proxyImageUrl(fallbackUrl)) {
-        console.log('Trying fallback URL:', fallbackUrl);
-        
-        // Проверяем, существует ли еще элемент в DOM
-        if (target.parentElement) {
-          try {
-            // Создаем новый элемент img для загрузки превью
-            const newImg = new Image();
-            // Обработчик ошибки для нового изображения
-            newImg.onerror = () => {
-              console.log('Fallback URL also failed:', fallbackUrl);
-              showImagePlaceholder(target);
-            };
-            // Обработчик успешной загрузки
-            newImg.onload = () => {
-              if (target.parentElement) {
-                target.src = newImg.src;
-                target.style.opacity = '1';
-              }
-            };
-            // Загружаем изображение
-            newImg.src = proxyImageUrl(fallbackUrl);
-            return;
-          } catch (loadError) {
-            console.error('Error loading fallback image:', loadError);
-          }
-        }
-      }
+      // Пытаемся использовать альтернативные ссылки в порядке приоритета
+      const alternativeUrls = [
+        media.files?.preview?.url,
+        media.files?.squarePreview?.url,
+        media.files?.thumb?.url
+      ].filter(Boolean) as string[];
       
-      // Если альтернативных ссылок нет или произошла ошибка, показываем заглушку
-      showImagePlaceholder(target);
+      // Пробуем каждый URL в очереди
+      tryNextUrl(alternativeUrls, 0, showPlaceholder);
     };
     
-    // Запускаем поиск альтернативных URL
-    tryFindAlternativeUrl();
+    // Функция для последовательной проверки альтернативных URL
+    const tryNextUrl = (urls: string[], index: number, showPlaceholder: () => void) => {
+      if (index >= urls.length) {
+        // Если все URL проверены и не работают, показываем заглушку
+        showPlaceholder();
+        return;
+      }
+      
+      const currentUrl = urls[index];
+      console.log(`Trying alternative URL (${index + 1}/${urls.length}):`, currentUrl);
+      
+      // Проверяем, существует ли еще элемент в DOM
+      if (!target.parentElement) {
+        console.log('Target element removed from DOM');
+        return;
+      }
+      
+      try {
+        // Создаем новый элемент для проверки URL
+        const testImg = new Image();
+        
+        // Обработчик успешной загрузки
+        testImg.onload = () => {
+          console.log('Alternative URL loaded successfully:', currentUrl);
+          if (target.parentElement) {
+            target.src = proxyImageUrl(currentUrl);
+            target.style.opacity = '1';
+          }
+        };
+        
+        // Обработчик ошибки - переходим к следующему URL
+        testImg.onerror = () => {
+          console.log('Alternative URL failed:', currentUrl);
+          // Пробуем следующий URL
+          tryNextUrl(urls, index + 1, showPlaceholder);
+        };
+        
+        // Загружаем изображение через прокси
+        testImg.src = proxyImageUrl(currentUrl);
+      } catch (err) {
+        console.error('Error checking alternative URL:', err);
+        // При ошибке переходим к следующему URL
+        tryNextUrl(urls, index + 1, showPlaceholder);
+      }
+    };
+    
+    // Если нет fallbackUrl от прокси, пробуем найти альтернативные URL
+    if (!fallbackUrlFromProxy) {
+      tryFindAlternativeUrl(alternatives, extractedOriginalUrl, showPlaceholder);
+    }
+  };
+  
+  // Функция для отображения заглушки вместо видео
+  const showVideoPlaceholder = (videoElement: HTMLVideoElement) => {
+    // Проверяем, существует ли элемент в DOM
+    if (!videoElement.parentElement) {
+      console.log('Video element removed from DOM, cannot show placeholder');
+      return;
+    }
+    
+    // Предотвращаем повторную вставку плейсхолдера
+    if (videoElement.nextElementSibling?.classList.contains('video-placeholder')) {
+      console.log('Video placeholder already shown');
+      return;
+    }
+    
+    videoElement.style.display = 'none';
+    
+    // Создаем элемент заглушки
+    const placeholder = document.createElement('div');
+    placeholder.className = 'bg-gray-200 rounded-lg w-full aspect-video flex items-center justify-center video-placeholder';
+    placeholder.innerHTML = `
+      <div class="flex flex-col items-center text-gray-500">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347c-.75.413-1.667-.13-1.667-.986V5.653z" />
+        </svg>
+        <span class="mt-2">Видео недоступно</span>
+      </div>
+    `;
+    
+    // Добавляем элемент в DOM после видео
+    videoElement.parentElement.appendChild(placeholder);
   };
   
   // Функция для отображения заглушки вместо изображения
   const showImagePlaceholder = (imgElement: HTMLImageElement) => {
+    // Проверяем, существует ли элемент в DOM
+    if (!imgElement.parentElement) {
+      console.log('Image element removed from DOM, cannot show placeholder');
+      return;
+    }
+    
+    // Предотвращаем повторную вставку плейсхолдера
+    if (imgElement.nextElementSibling?.classList.contains('image-placeholder')) {
+      console.log('Placeholder already shown');
+      return;
+    }
+    
     imgElement.style.display = 'none';
-    imgElement.parentElement!.appendChild(
-      document.createRange().createContextualFragment(
-        `<div class="bg-gray-200 rounded-lg w-full aspect-square flex items-center justify-center">
-          <div class="flex flex-col items-center text-gray-500">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" class="w-12 h-12">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-            </svg>
-            <span class="mt-2">Изображение недоступно</span>
-          </div>
-        </div>`
-      )
-    );
+    
+    // Создаем элемент заглушки
+    const placeholder = document.createElement('div');
+    placeholder.className = 'bg-gray-200 rounded-lg w-full aspect-square flex items-center justify-center image-placeholder';
+    placeholder.innerHTML = `
+      <div class="flex flex-col items-center text-gray-500">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+        </svg>
+        <span class="mt-2">Изображение недоступно</span>
+      </div>
+    `;
+    
+    // Добавляем элемент в DOM после изображения
+    imgElement.parentElement.appendChild(placeholder);
   };
 
   // Функция для отображения медиа-элемента
@@ -470,7 +572,13 @@ export default function MessageItem({ message }: MessageProps) {
                     onClick={() => {
                       if (mediaUrl) window.open(mediaUrl, '_blank');
                     }}
-                    onError={(e) => handleProxyError(e, mediaUrl)}
+                    onError={(e) => handleProxyError(
+                      e,
+                      mediaUrl,
+                      media.alternatives || [],
+                      media.originalUrl,
+                      () => showImagePlaceholder(e.currentTarget)
+                    )}
                   />
                 ) : (
                   // Отображаем заглушку, если URL недоступен
@@ -487,18 +595,13 @@ export default function MessageItem({ message }: MessageProps) {
                     poster={media.files?.preview?.url ? proxyImageUrl(media.files.preview.url) : undefined}
                     onError={(e) => {
                       console.error('Video failed to load:', mediaUrl);
-                      e.currentTarget.style.display = 'none';
-                      e.currentTarget.parentElement!.appendChild(
-                        document.createRange().createContextualFragment(
-                          `<div class="bg-gray-200 rounded-lg w-full aspect-video flex items-center justify-center">
-                            <div class="flex flex-col items-center text-gray-500">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" class="w-12 h-12">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347c-.75.413-1.667-.13-1.667-.986V5.653z" />
-                              </svg>
-                              <span class="mt-2">Видео недоступно</span>
-                            </div>
-                          </div>`
-                        )
+                      const videoElement = e.currentTarget;
+                      handleProxyError(
+                        e as React.SyntheticEvent<HTMLVideoElement, Event>,
+                        mediaUrl,
+                        media.alternatives || [],
+                        media.originalUrl,
+                        () => showVideoPlaceholder(videoElement)
                       );
                     }}
                   />
@@ -663,7 +766,13 @@ export default function MessageItem({ message }: MessageProps) {
                         onClick={() => {
                           if (message.mediaUrl) window.open(message.mediaUrl, '_blank');
                         }}
-                        onError={(e) => handleProxyError(e, message.mediaUrl)}
+                        onError={(e) => handleProxyError(
+                          e,
+                          message.mediaUrl,
+                          message.alternativeMediaUrls || [],
+                          message.originalMediaUrl,
+                          () => showImagePlaceholder(e.currentTarget)
+                        )}
                       />
                     ) : (
                       // Отображаем заглушку, если URL недоступен
@@ -677,18 +786,13 @@ export default function MessageItem({ message }: MessageProps) {
                         className="rounded max-w-full"
                         onError={(e) => {
                           console.error('Video failed to load:', message.mediaUrl);
-                          e.currentTarget.style.display = 'none';
-                          e.currentTarget.parentElement!.appendChild(
-                            document.createRange().createContextualFragment(
-                              `<div class="bg-gray-200 rounded-lg w-full aspect-video flex items-center justify-center">
-                                <div class="flex flex-col items-center text-gray-500">
-                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" class="w-12 h-12">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347c-.75.413-1.667-.13-1.667-.986V5.653z" />
-                                  </svg>
-                                  <span class="mt-2">Видео недоступно</span>
-                                </div>
-                              </div>`
-                            )
+                          const videoElement = e.currentTarget;
+                          handleProxyError(
+                            e as React.SyntheticEvent<HTMLVideoElement, Event>,
+                            message.mediaUrl,
+                            message.alternativeMediaUrls || [],
+                            message.originalMediaUrl,
+                            () => showVideoPlaceholder(videoElement)
                           );
                         }}
                       />
