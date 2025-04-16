@@ -269,31 +269,6 @@ export default function MessageItem({ message }: MessageProps) {
            getMediaUrl(media) !== null;
   };
 
-  // Получаем плейсхолдер в зависимости от типа медиа
-  const getPlaceholderElement = (mediaType: string) => {
-    // Дефолтный текст для разных типов медиа
-    const mediaTypeText: Record<string, string> = {
-      'photo': 'Изображение',
-      'video': 'Видео',
-      'gif': 'GIF-анимация',
-      'audio': 'Аудиозапись',
-      'document': 'Документ'
-    };
-    
-    const typeLabel = mediaTypeText[mediaType] || 'Медиа';
-    
-    return (
-      <div className="bg-gray-100 text-gray-400 p-4 rounded text-center">
-        <div className="flex flex-col items-center">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8">
-            <path fillRule="evenodd" d="M1.5 6a2.25 2.25 0 012.25-2.25h16.5A2.25 2.25 0 0122.5 6v12a2.25 2.25 0 01-2.25 2.25H3.75A2.25 2.25 0 011.5 18V6zM3 16.06V18c0 .414.336.75.75.75h16.5A.75.75 0 0021 18v-1.94l-2.69-2.689a1.5 1.5 0 00-2.12 0l-.88.879.97.97a.75.75 0 11-1.06 1.06l-5.16-5.159a1.5 1.5 0 00-2.12 0L3 16.061zm10.125-7.81a1.125 1.125 0 112.25 0 1.125 1.125 0 01-2.25 0z" clipRule="evenodd" />
-          </svg>
-          <span className="mt-2">{typeLabel} недоступно</span>
-        </div>
-      </div>
-    );
-  };
-
   const handleProxyError = async (
     e: React.SyntheticEvent<HTMLImageElement | HTMLVideoElement, Event>, 
     mediaUrl: string | null, 
@@ -405,35 +380,12 @@ export default function MessageItem({ message }: MessageProps) {
       testImg.src = url;
     };
 
-  // Функция для отображения плейсхолдера вместо видео
-  const showVideoPlaceholder = (videoElement: HTMLVideoElement) => {
-    console.log('Показываю плейсхолдер для видео');
-    
-    // Создаем плейсхолдер
-    const placeholder = document.createElement('div');
-    placeholder.className = 'bg-gray-100 rounded p-4 text-center text-gray-500';
-    placeholder.innerHTML = `
-      <div class="flex flex-col items-center">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M12 18.75H4.5a2.25 2.25 0 01-2.25-2.25V9m12.841 9.091L16.5 19.5m-1.409-1.409c.407-.407.659-.97.659-1.591v-9a2.25 2.25 0 00-2.25-2.25h-9c-.621 0-1.184.252-1.591.659m12.182 12.182L2.909 5.909M1.5 4.5l1.409 1.409" />
-        </svg>
-        <span class="mt-2">Видео недоступно</span>
-      </div>
-    `;
-    
-    // Заменяем видео на плейсхолдер
-    const parent = videoElement.parentElement;
-    if (parent) {
-      parent.replaceChild(placeholder, videoElement);
-    }
-  };
-
   // Функция рендеринга медиа-элемента
   const renderMediaItem = (media: MediaItem, index: number) => {
     // Проверка наличия медиа-элемента
     if (!media) {
       console.warn('Попытка отрендерить пустой медиа-элемент');
-      return <MediaPlaceholder error message="Медиа-элемент не найден" />;
+      return null; // Не отображаем ничего вместо плейсхолдера
     }
     
     // Расширенное логирование для медиа
@@ -446,18 +398,18 @@ export default function MessageItem({ message }: MessageProps) {
 
     // Проверка на ошибки и состояние загрузки
     if (media.hasError) {
-      return <MediaPlaceholder error message="Ошибка загрузки медиа" />;
+      return null; // Не отображаем медиа с ошибками
     }
     
     if (media.isReady === false) {
-      return <MediaPlaceholder loading message="Медиа загружается..." />;
+      return <MediaPlaceholder loading message="Медиа загружается..." />; // Оставляем загрузку
     }
     
     const mediaUrl = getMediaUrl(media);
     
     // Проверяем наличие URL
     if (!mediaUrl) {
-      return <MediaPlaceholder error message="URL медиа недоступен" />;
+      return null; // Не отображаем медиа с недоступными URL
     }
 
     // Рендерим в зависимости от типа медиа
@@ -471,12 +423,11 @@ export default function MessageItem({ message }: MessageProps) {
             loading="lazy"
             onClick={() => media.canView !== false && openMediaViewer({ medias: message.media || [], startIndex: index })}
             onError={(e) => {
-              // Если изображение не загрузилось, скрываем его
-              (e.target as HTMLImageElement).style.display = 'none';
-              
-              // Показываем плейсхолдер вместо сломанного изображения
-              const imgEl = e.target as HTMLImageElement;
-              showImagePlaceholder(imgEl);
+              // Если изображение не загрузилось, полностью скрываем его
+              const parentDiv = (e.target as HTMLImageElement).closest('div[style]') as HTMLDivElement;
+              if (parentDiv) {
+                parentDiv.style.display = 'none';
+              }
             }}
           />
         </div>
@@ -491,20 +442,19 @@ export default function MessageItem({ message }: MessageProps) {
             playsInline
             poster={getThumbFileUrl(media)}
             onError={(e) => {
-              // Если видео не загрузилось, скрываем его
-              (e.target as HTMLVideoElement).style.display = 'none';
-              
-              // Показываем плейсхолдер вместо сломанного видео
-              const videoEl = e.target as HTMLVideoElement;
-              showVideoPlaceholder(videoEl);
+              // Если видео не загрузилось, полностью скрываем его
+              const parentDiv = (e.target as HTMLVideoElement).closest('div[style]') as HTMLDivElement;
+              if (parentDiv) {
+                parentDiv.style.display = 'none';
+              }
             }}
           />
         </div>
       );
     }
 
-    // Для неподдерживаемых типов показываем заглушку
-    return getPlaceholderElement(media.type);
+    // Для неподдерживаемых типов ничего не отображаем
+    return null;
   };
 
   // Функция для открытия просмотрщика медиа
@@ -538,15 +488,26 @@ export default function MessageItem({ message }: MessageProps) {
         
         {message.text && <p className="mb-1">{message.text}</p>}
         
-        {message.media && message.media.length > 0 && (
-          <div className="mt-2">
-            {message.media.map((mediaItem, index) => (
-              <div key={`${mediaItem.id}-${index}`} className="mb-2">
-                {renderMediaItem(mediaItem, index)}
-              </div>
-            ))}
-          </div>
-        )}
+        {message.media && message.media.length > 0 && (() => {
+          // Собираем предварительно все рендеры медиа-элементов
+          const renderedItems = message.media
+            .map((mediaItem, index) => {
+              const renderedItem = renderMediaItem(mediaItem, index);
+              return renderedItem ? (
+                <div key={`${mediaItem.id}-${index}`} className="mb-2">
+                  {renderedItem}
+                </div>
+              ) : null;
+            })
+            .filter(Boolean); // Оставляем только не-null элементы
+          
+          // Если после фильтрации не осталось элементов, ничего не рендерим
+          return renderedItems.length > 0 ? (
+            <div className="mt-2">
+              {renderedItems}
+            </div>
+          ) : null;
+        })()}
         
         <div className={`text-xs mt-1 ${message.isFromUser ? 'text-blue-100' : 'text-gray-500'}`}>
           {formattedTime}
@@ -554,27 +515,4 @@ export default function MessageItem({ message }: MessageProps) {
       </div>
     </div>
   );
-}
-
-// Функция для отображения плейсхолдера вместо изображения
-const showImagePlaceholder = (imgElement: HTMLImageElement) => {
-  console.log('Показываю плейсхолдер для изображения');
-  
-  // Создаем плейсхолдер
-  const placeholder = document.createElement('div');
-  placeholder.className = 'bg-gray-100 rounded p-4 text-center text-gray-500';
-  placeholder.innerHTML = `
-    <div class="flex flex-col items-center">
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-      </svg>
-      <span class="mt-2">Изображение недоступно</span>
-    </div>
-  `;
-  
-  // Заменяем изображение на плейсхолдер
-  const parent = imgElement.parentElement;
-  if (parent) {
-    parent.replaceChild(placeholder, imgElement);
-  }
-}; 
+} 
