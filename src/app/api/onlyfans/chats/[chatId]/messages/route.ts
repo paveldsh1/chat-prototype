@@ -3,14 +3,16 @@ import { NextResponse } from 'next/server';
 // Константы для API
 const API_KEY = 'ofapi_p0wHp23pKLWlqemuMm4gQ2kIuXzqdkp34MYn0E9B081dedfb';
 const ACCOUNT_ID = 'acct_601447d3a13342e0a0da8c16aa35ad07';
+// Возвращаем правильный URL API, который работает с нашим ключом
+const ONLYFANS_API_URL = 'https://app.onlyfansapi.com/api';
 
-// Добавляем поддержку CORS и OPTIONS запросов
+// CORS поддержка
 export async function OPTIONS(request: Request) {
   return new NextResponse(null, {
     status: 200,
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'Access-Control-Max-Age': '86400',
     },
@@ -25,36 +27,33 @@ export async function GET(
     // Получаем chatId асинхронно
     const chatId = await Promise.resolve(params.chatId);
 
-    // Получаем параметры запроса
+    // Параметры запроса
     const url = new URL(request.url);
     const limit = url.searchParams.get('limit') || '30';
     const lastMessageId = url.searchParams.get('id');
     
-    // Формируем URL с учетом параметров пагинации
-    let apiUrl = `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/chats/${chatId}/messages?limit=${limit}`;
+    // Формируем URL с параметрами пагинации
+    let apiUrl = `${ONLYFANS_API_URL}/${ACCOUNT_ID}/chats/${chatId}/messages?limit=${limit}`;
     if (lastMessageId) {
       apiUrl += `&id=${lastMessageId}`;
     }
     
-    // Выполняем запрос к API OnlyFans
-    const response = await fetch(
-      apiUrl,
-      {
-        headers: {
-          'Authorization': `Bearer ${API_KEY}`,
-          'Accept': 'application/json',
-        },
-      }
-    );
+    console.log('Fetching messages from:', apiUrl);
+    
+    // Запрос к OnlyFans API
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Accept': 'application/json',
+      },
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`API returned ${response.status}: ${errorText}`);
       
-      // Если мы получаем ошибку от API, используем моковые данные для тестирования
+      // Возвращаем моковые данные при ошибке
       const mockMessages = generateMockMessages(chatId, 10, lastMessageId);
-      
-      // Сортируем моковые сообщения по дате - новые сначала
       mockMessages.sort((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
@@ -74,17 +73,13 @@ export async function GET(
       throw new Error('Invalid response format from API');
     }
     
-    // Исправляем экранированные URL-адреса в ответе API
-    const fixedRawData = fixEscapedUrls(rawData);
-    
-    // Преобразуем ответ API в формат, ожидаемый клиентом
-    const messages = fixedRawData.data.list.map((msg: any) => {
-      // Безопасно преобразуем chatId в число для сравнения
+    // Преобразуем ответ API
+    const messages = rawData.data.list.map((msg: any) => {
       const chatIdNum = parseInt(chatId);
       
       return {
         id: msg.id,
-        text: msg.text?.replace(/<[^>]*>/g, '') || '', // Удаляем HTML теги
+        text: msg.text?.replace(/<[^>]*>/g, '') || '',
         fromUser: {
           id: msg.fromUser?.id || '',
           name: msg.fromUser?.name || '',
@@ -99,38 +94,32 @@ export async function GET(
         price: msg.price || 0,
         isFree: msg.isFree !== false,
         isOpened: msg.isOpened !== false,
-        // Важно! Добавляем массив media для корректной обработки в компоненте
         media: msg.media || [],
-        // Добавляем mediaCount для отображения количества медиа
         mediaCount: msg.media?.length || 0,
         isMediaReady: msg.isMediaReady
       };
     });
 
-    // Сортируем сообщения по дате - новые сначала
+    // Сортируем по дате (новые сначала)
     messages.sort((a: any, b: any) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     
-    // Добавляем информацию о пагинации
     return NextResponse.json({
       messages,
       pagination: {
-        next_id: fixedRawData._pagination?.next_page ? 
-          new URL(fixedRawData._pagination.next_page).searchParams.get('id') : 
+        next_id: rawData._pagination?.next_page ? 
+          new URL(rawData._pagination.next_page).searchParams.get('id') : 
           null
       }
     });
   } catch (error) {
     console.error('Error fetching messages:', error);
     
-    // Извлекаем chatId из params для мока
+    // В случае ошибки возвращаем тестовые данные
     const chatId = await Promise.resolve(params.chatId);
-    
-    // В случае любой ошибки возвращаем тестовые данные
     const mockMessages = generateMockMessages(chatId, 10);
     
-    // Сортируем моковые сообщения по дате - новые сначала
     mockMessages.sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
@@ -149,53 +138,55 @@ export async function POST(
   { params }: { params: { chatId: string } }
 ) {
   try {
-    // Получаем chatId асинхронно
     const chatId = await Promise.resolve(params.chatId);
-    
-    // Проверяем тип содержимого запроса
     const contentType = request.headers.get('content-type') || '';
     
     let text = '';
     let file: File | null = null;
-    let mediaFiles = "[]";
-    // Инициализируем переменные цены за пределами условий
-    let priceParam: FormDataEntryValue | null = null;
+    let mediaId: string | null = null;
     let price = 0;
 
-    // Обработка multipart/form-data (для файлов)
+    console.log('Content-Type:', contentType);
+
+    // Обработка формы с файлом
     if (contentType.includes('multipart/form-data')) {
       try {
         const formData = await request.formData();
+        console.log('FormData fields:', [...formData.keys()]);
         
         text = formData.get('text') as string || '';
         file = formData.get('file') as File | null;
         
-        // Получаем параметр price из формы, если он есть
-        priceParam = formData.get('price');
+        const priceParam = formData.get('price');
         price = priceParam ? Number(priceParam) : 0;
+        
+        console.log('Received file:', file?.name, file?.type, file?.size);
       } catch (formError) {
         console.error('Error parsing FormData:', formError);
         throw new Error(`Ошибка обработки формы: ${formError}`);
       }
       
-      // Если файл присутствует, загружаем его на OnlyFans
+      // Загрузка файла (если есть)
       if (file) {
-        // Формируем FormData для загрузки файла
-        const fileFormData = new FormData();
-        fileFormData.append('file', file);
-        
         try {
-          // Правильный API URL для загрузки медиа
-          const uploadResponse = await fetch(
-            `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/medias`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${API_KEY}`,
-              },
-              body: fileFormData
-            }
-          );
+          // 1. Сначала загружаем файл через media endpoint
+          console.log('Uploading file to OnlyFans API...');
+          
+          const mediaFormData = new FormData();
+          mediaFormData.append('media', file);
+          mediaFormData.append('media_type', file.type.startsWith('image/') ? 'photo' : 'video');
+          
+          // Правильный эндпоинт для загрузки файла
+          const uploadUrl = `${ONLYFANS_API_URL}/${ACCOUNT_ID}/medias`;
+          
+          const uploadResponse = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${API_KEY}`,
+              // Не устанавливаем Content-Type, браузер делает это автоматически с boundary
+            },
+            body: mediaFormData
+          });
           
           if (!uploadResponse.ok) {
             const errorText = await uploadResponse.text();
@@ -204,17 +195,15 @@ export async function POST(
           }
           
           const uploadData = await uploadResponse.json();
+          console.log('Upload response:', uploadData);
           
-          // Получаем ID загруженного файла
+          // Получаем media_id из ответа
           if (uploadData.data && uploadData.data.id) {
-            // Сохраняем ID медиа-файла в переменную для дальнейшего использования
-            const mediaId = uploadData.data.id;
-            
-            // Формируем массив ID медиа-файлов для API
-            mediaFiles = JSON.stringify([mediaId]);
+            mediaId = uploadData.data.id.toString();
+            console.log('Got media_id:', mediaId);
           } else {
-            console.error('Upload response does not contain media ID', uploadData);
-            throw new Error('Ответ API не содержит ID загруженного файла');
+            console.error('Upload response does not contain media_id', uploadData);
+            throw new Error('API не вернул media_id');
           }
         } catch (uploadError) {
           console.error('Error during file upload:', uploadError);
@@ -222,75 +211,59 @@ export async function POST(
         }
       }
     } else {
-      // Обработка application/json
+      // Обработка JSON
       const jsonData = await request.json();
       text = jsonData.text || '';
     }
 
-    // Формируем данные для отправки сообщения по API OnlyFans
-    const messageData: any = { 
-      text: text || " " 
+    // Отправка сообщения
+    const messageData: any = {
+      user_id: parseInt(chatId),
+      text: text || " "
     };
 
-    // Добавляем user_id для совместимости с API OnlyFans
-    // Документация требует user_id вместо chatId в параметрах
-    messageData.user_id = chatId;
-
-    // Если есть медиафайлы, добавляем их в запрос
-    if (mediaFiles !== "[]") {
-      // Важное исправление: OnlyFans API ожидает параметр mediaFiles (согласно документации)
-      try {
-        const mediaIdsArray = JSON.parse(mediaFiles);
-        
-        // Пробуем разные варианты параметров согласно документации
-        // Вариант 1: mediaFiles как в старой документации
-        messageData.mediaFiles = mediaIdsArray;
-        
-        // Вариант 2: media_ids как в новой документации
-        messageData.media_ids = mediaIdsArray;
-        
-        // ВАЖНО: устанавливаем цену для контента, даже если он бесплатный
-        // Документация требует указывать цену для медиафайлов
+    // Добавляем media_ids если есть загруженный файл
+    if (mediaId) {
+      messageData.media_ids = [mediaId];
+      
+      // Цена, если задана
+      if (price > 0) {
         messageData.price = price;
-      } catch (parseError) {
-        console.error('Ошибка при парсинге массива ID медиа:', parseError);
-        throw new Error('Невозможно преобразовать список ID медиа для отправки');
       }
     }
 
-    // Отправляем сообщение через API OnlyFans
-    try {
-      // Исправляем URL эндпоинта согласно документации
-      const apiUrl = `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/chats/send-message`;
-      
-      const response = await fetch(
-        apiUrl,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(messageData)
-        }
-      );
+    console.log('Sending message with data:', JSON.stringify(messageData));
 
-      // Читаем тело ответа в текстовом формате
-      const responseText = await response.text();
+    // Отправляем сообщение в чат
+    try {
+      // Правильный эндпоинт для отправки сообщений
+      const apiUrl = `${ONLYFANS_API_URL}/${ACCOUNT_ID}/chats/send-message`;
       
-      // Парсим JSON, если возможно
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(messageData)
+      });
+
+      const responseText = await response.text();
+      console.log('Response status:', response.status);
+      console.log('Response text:', responseText.substring(0, 500));
+      
       let data;
       try {
         data = JSON.parse(responseText);
       } catch (jsonError) {
-        console.error('❌ ОШИБКА ПАРСИНГА JSON:', jsonError);
+        console.error('JSON parsing error:', jsonError);
         data = { error: 'Неверный формат JSON', rawResponse: responseText };
       }
 
       if (!response.ok) {
-        console.error('❌ ОШИБКА ПРИ ОТПРАВКЕ СООБЩЕНИЯ:', data);
+        console.error('Failed to send message:', data);
         
-        // Возвращаем сообщение об ошибке от API, если оно есть
         return NextResponse.json({
           error: true,
           message: data.message || data.error || 'Ошибка при отправке сообщения',
@@ -304,24 +277,24 @@ export async function POST(
             },
             isFree: price === 0,
             price: price,
-            isNew: true,
-            media: []
+            media: mediaId ? [{ id: mediaId }] : []
           }
-        });
+        }, { status: response.status });
       }
 
-      // Возвращаем ответ как есть
-      console.log('✅ СООБЩЕНИЕ УСПЕШНО ОТПРАВЛЕНО');
+      // Успешный ответ
       return NextResponse.json(data);
     } catch (sendError) {
       console.error('Error sending message to API:', sendError);
       throw new Error(`Ошибка при отправке сообщения в API: ${sendError}`);
     }
   } catch (error) {
-    console.error('Error sending message:', error);
+    console.error('Error processing message:', error);
     
-    // В случае любой ошибки возвращаем моковое сообщение
+    // Возвращаем моковое сообщение
     return NextResponse.json({
+      error: true,
+      message: error instanceof Error ? error.message : 'Неизвестная ошибка',
       data: {
         id: Date.now(),
         text: "Ошибка при отправке сообщения",
@@ -332,17 +305,16 @@ export async function POST(
         },
         isFree: true,
         price: 0,
-        isNew: true,
         media: []
       }
-    });
+    }, { status: 500 });
   }
 }
 
-// Функция для генерации моковых сообщений для тестирования
+// Генерация тестовых сообщений
 function generateMockMessages(chatId: string, count: number, startIdStr?: string | null): any[] {
   const startId = startIdStr ? Number(startIdStr) : Date.now();
-  const userId = 486000283; // ID пользователя
+  const userId = 486000283;
   const chatIdNum = parseInt(chatId);
   
   return Array.from({ length: count }).map((_, index) => {
@@ -367,27 +339,4 @@ function generateMockMessages(chatId: string, count: number, startIdStr?: string
       isOpened: true
     };
   });
-}
-
-// Функция для исправления URL с экранированными слешами
-function fixEscapedUrls(obj: any): any {
-  if (!obj) return obj;
-  
-  if (typeof obj === 'string' && obj.includes('\\/')) {
-    return obj.replace(/\\\//g, '/');
-  }
-  
-  if (Array.isArray(obj)) {
-    return obj.map(item => fixEscapedUrls(item));
-  }
-  
-  if (typeof obj === 'object') {
-    const result = {...obj};
-    for (const key in result) {
-      result[key] = fixEscapedUrls(result[key]);
-    }
-    return result;
-  }
-  
-  return obj;
 } 

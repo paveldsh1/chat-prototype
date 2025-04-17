@@ -216,27 +216,127 @@ export default function ChatPage() {
           formData.append('price', price.toString());
         }
       }
+
+      let responseData: any = null;
       
-      const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
-        method: 'POST',
-        body: file ? formData : JSON.stringify({ text }),
-        headers: file ? undefined : {
-          'Content-Type': 'application/json'
+      // Создаем XMLHttpRequest для отслеживания прогресса загрузки
+      if (file) {
+        const xhr = new XMLHttpRequest();
+        const uploadPromise = new Promise<{data: any, text: string}>((resolve, reject) => {
+          xhr.open('POST', `/api/onlyfans/chats/${chatId}/messages`);
+          
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const progress = Math.round((event.loaded / event.total) * 100);
+              // Сообщаем прогресс загрузки через ChatInput
+              window.dispatchEvent(new CustomEvent('uploadProgress', { 
+                detail: { progress } 
+              }));
+            }
+          };
+          
+          xhr.onload = function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const data = JSON.parse(xhr.responseText);
+                resolve({data, text: xhr.responseText});
+              } catch (e) {
+                resolve({data: null, text: xhr.responseText});
+              }
+            } else {
+              reject(new Error(`Ошибка ${xhr.status}: ${xhr.statusText}`));
+            }
+          };
+          
+          xhr.onerror = function() {
+            reject(new Error('Сетевая ошибка'));
+          };
+          
+          // Отправляем запрос с FormData
+          xhr.send(formData);
+        });
+        
+        // Ждем завершения загрузки
+        const {data, text: responseText} = await uploadPromise;
+        responseData = data;
+        
+        // Обнуляем прогресс после завершения
+        window.dispatchEvent(new CustomEvent('uploadProgress', { 
+          detail: { progress: 0 } 
+        }));
+        
+        // Продолжаем обработку ответа
+        try {
+          // Обновляем сообщение с реальными данными
+          if (responseData) {
+            // Обновляем сообщение
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id === tempId 
+                  ? {
+                      ...msg,
+                      id: responseData.data?.id || msg.id,
+                      mediaUrl: responseData.data?.media?.[0]?.url || msg.mediaUrl,
+                      createdAt: responseData.data?.createdAt || msg.createdAt,
+                      price: responseData.data?.price || price,
+                      isFree: responseData.data?.isFree !== undefined ? responseData.data.isFree : price === 0,
+                      media: responseData.data?.media || []
+                    } 
+                  : msg
+              )
+            );
+          }
+        } catch (e) {
+          console.error('Ошибка обработки ответа:', e, responseText);
         }
-      });
-      
-      // Читаем ответ в текстовом формате
-      const responseText = await response.text();
-      
-      let data;
-      try {
-        data = JSON.parse(responseText);
-      } catch (jsonError) {
-        console.error('Ошибка при парсинге JSON ответа:', jsonError);
-        throw new Error('Неверный формат ответа от сервера');
+      } else {
+        // Для текстовых сообщений используем обычный fetch
+        const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({ text }),
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        // Проверяем HTTP статус
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Ошибка при отправке: ${response.status}. ${errorText}`);
+        }
+        
+        // Читаем ответ в текстовом формате
+        const responseText = await response.text();
+        
+        try {
+          // Пробуем распарсить как JSON
+          responseData = JSON.parse(responseText);
+          
+          // Обновляем сообщение с реальными данными с сервера
+          if (responseData) {
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id === tempId 
+                  ? {
+                      ...msg,
+                      id: responseData.data?.id || msg.id,
+                      createdAt: responseData.data?.createdAt || msg.createdAt,
+                      price: responseData.data?.price || price,
+                      isFree: responseData.data?.isFree !== undefined ? responseData.data.isFree : price === 0,
+                      media: responseData.data?.media || []
+                    } 
+                  : msg
+              )
+            );
+          }
+        } catch (e) {
+          console.error('Ошибка парсинга ответа сервера:', e);
+          throw new Error('Неверный формат ответа сервера');
+        }
       }
       
-      if (!response.ok) {
+      // Если возникла ошибка в ответе, обрабатываем её
+      if (responseData?.error) {
         // Помечаем временное сообщение как ошибочное
         setMessages(prev => prev.map(msg => 
           msg.id === tempId ? {
@@ -247,25 +347,13 @@ export default function ChatPage() {
         ));
         
         // Показываем ошибку
-        setError(data.message || data.error || `Не удалось отправить сообщение: ${response.status}`);
+        setError(responseData.message || responseData.error || 'Ошибка при отправке сообщения');
         
         // Убираем ошибку через 5 секунд
         setTimeout(() => setError(null), 5000);
         
-        throw new Error(data.message || data.error || `Не удалось отправить сообщение: ${response.status}`);
+        throw new Error(responseData.message || responseData.error || 'Ошибка при отправке сообщения');
       }
-      
-      // Заменяем временное сообщение на реальное с сервера
-      setMessages(prev => prev.map(msg => 
-        msg.id === tempId ? {
-          ...msg,
-          id: data.data.id.toString(),
-          createdAt: data.data.createdAt,
-          price: data.data.price || price,
-          isFree: data.data.isFree !== undefined ? data.data.isFree : price === 0,
-          media: data.data.media || []
-        } : msg
-      ));
       
     } catch (error) {
       console.error('Ошибка при отправке сообщения:', error);

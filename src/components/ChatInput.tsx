@@ -13,6 +13,7 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [price, setPrice] = useState<number>(0);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Создаем URL для превью при выборе файла
@@ -22,15 +23,31 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
       setPreviewUrl(url);
       
       // Очищаем URL при размонтировании компонента
-      return () => URL.revokeObjectURL(url);
+      return () => {
+        if (url) URL.revokeObjectURL(url);
+      };
     }
   }, [selectedFile]);
+
+  // Отслеживаем прогресс загрузки файла
+  useEffect(() => {
+    const handleUploadProgress = (event: CustomEvent<{ progress: number }>) => {
+      setUploadProgress(event.detail.progress);
+    };
+
+    window.addEventListener('uploadProgress', handleUploadProgress as EventListener);
+    
+    return () => {
+      window.removeEventListener('uploadProgress', handleUploadProgress as EventListener);
+    };
+  }, []);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     
     if (!text.trim() && !selectedFile) return;
     
+    setUploadProgress(0);
     onSendMessage(text, selectedFile || undefined, selectedFile ? price : undefined);
     setText("");
     setSelectedFile(null);
@@ -45,6 +62,18 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      // Проверка типа файла (только изображения)
+      if (!file.type.startsWith('image/')) {
+        alert('Поддерживаются только изображения');
+        return;
+      }
+      
+      // Проверка размера файла (максимум 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        alert('Размер файла не должен превышать 10MB');
+        return;
+      }
+      
       setSelectedFile(file);
     }
   };
@@ -53,6 +82,7 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
     setSelectedFile(null);
     setPreviewUrl(null);
     setPrice(0);
+    setUploadProgress(0);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -89,6 +119,11 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
                     alt="Предпросмотр" 
                     className="w-full h-full object-cover"
                   />
+                  {uploadProgress > 0 && uploadProgress < 100 && (
+                    <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center">
+                      <div className="text-white text-xs font-bold">{uploadProgress}%</div>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="flex-1">
@@ -120,6 +155,7 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
               type="button"
               onClick={clearSelectedFile}
               className="text-gray-500 hover:text-gray-700 p-1"
+              disabled={isLoading}
             >
               <X className="h-5 w-5" />
             </button>
@@ -140,7 +176,10 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
             disabled={isLoading || (!text.trim() && !selectedFile)}
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 h-10"
           >
-            <Send className="h-5 w-5" />
+            {isLoading ? 
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 
+              <Send className="h-5 w-5" />
+            }
           </Button>
 
           <Button
@@ -148,22 +187,9 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
             onClick={handleFileSelect}
             disabled={isLoading}
             className="bg-green-500 hover:bg-green-600 text-white px-4 h-10 flex items-center gap-1"
-            style={{
-              position: 'relative',
-              overflow: 'hidden',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-              animation: 'pulse 2s infinite'
-            }}
           >
             <Paperclip className="h-5 w-5" />
             <span className="hidden sm:inline">Фото</span>
-            <style jsx global>{`
-              @keyframes pulse {
-                0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-                70% { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
-                100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-              }
-            `}</style>
           </Button>
         </div>
       </form>
