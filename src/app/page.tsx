@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useEffect, useState, useCallback, useRef } from "react";
-import { getChats, getChatMessages, sendMessage, checkAuth } from "@/lib/onlyfans-api";
+import { getChats, getChatMessages, sendMessage, sendMessageWithFile, checkAuth } from "@/lib/onlyfans-api";
 import type { Chat, Message, AccountInfo, MessagePaginationResponse } from "@/lib/onlyfans-api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import LoadingSpinner from "@/components/LoadingSpinner";
@@ -307,84 +307,130 @@ export default function Home() {
   const handleSendMessage = async () => {
     if (!selectedChat || (!newMessage.trim() && !selectedFile)) return;
 
-    // Создаем оптимистичное сообщение
-    const optimisticMessage: Message = {
-      id: Date.now(), // Временный ID
-      text: newMessage,
-      timestamp: new Date().toISOString(),
-      fromUser: true,
-      media: [],
-      isFree: true,
-      price: 0,
-      isNew: true
-    };
-
-    // Оптимистично обновляем UI
-    setMessages(prev => [...prev, optimisticMessage]);
-    setMessageCache(prev => ({
-      ...prev,
-      [selectedChat.toString()]: [...(prev[selectedChat.toString()] || []), optimisticMessage]
-    }));
-    setNewMessage(''); // Очищаем поле ввода сразу
-
-    // Отправляем сообщение на сервер
     try {
+      setLoading(true);
       setError(null);
-      const message = await sendMessage(selectedChat.toString(), newMessage);
       
-      // Заменяем оптимистичное сообщение реальным
-      setMessages(prev => 
-        prev.map(msg => msg.id === optimisticMessage.id ? message : msg)
-      );
-      setMessageCache(prev => ({
-        ...prev,
-        [selectedChat.toString()]: prev[selectedChat.toString()].map(msg => 
-          msg.id === optimisticMessage.id ? message : msg
-        )
-      }));
-    } catch (error) {
-      // В случае ошибки удаляем оптимистичное сообщение
-      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
-      setMessageCache(prev => ({
-        ...prev,
-        [selectedChat.toString()]: prev[selectedChat.toString()].filter(msg => msg.id !== optimisticMessage.id)
-      }));
-      setError(error instanceof Error ? error.message : 'Failed to send message');
-      console.error('Failed to send message:', error);
-    }
-
-    if (selectedFile) {
-      console.log('Sending message with file:', selectedFile.name);
-      // Здесь добавьте логику отправки файла
-      
-      // Отправляем формдату с файлом
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      if (newMessage.trim()) {
-        formData.append('text', newMessage.trim());
-      }
-      
-      try {
-        const response = await fetch(`/api/onlyfans/chats/${selectedChat.toString()}/messages`, {
-          method: 'POST',
-          body: formData
-        });
+      // Проверяем, есть ли файл для отправки
+      if (selectedFile) {
+        console.log('Sending message with file:', selectedFile.name);
         
-        if (!response.ok) {
-          throw new Error('Ошибка при отправке файла');
+        // Создаем оптимистичное сообщение с файлом
+        const optimisticMessage: Message = {
+          id: Date.now(),
+          text: newMessage.trim() || '',
+          timestamp: new Date().toISOString(),
+          fromUser: true,
+          media: [{
+            id: Date.now(),
+            type: selectedFile.type.includes('image') ? 'photo' : 'video',
+            url: URL.createObjectURL(selectedFile)
+          }],
+          isFree: true,
+          price: 0,
+          isNew: true
+        };
+        
+        // Оптимистично обновляем UI
+        setMessages(prev => [...prev, optimisticMessage]);
+        setMessageCache(prev => ({
+          ...prev,
+          [selectedChat.toString()]: [...(prev[selectedChat.toString()] || []), optimisticMessage]
+        }));
+        
+        // Очищаем поле ввода и файл
+        setNewMessage('');
+        setSelectedFile(null);
+        setPreviewUrl(null);
+        
+        try {
+          // Используем новую функцию для отправки файла
+          const message = await sendMessageWithFile(
+            selectedChat.toString(), 
+            newMessage.trim(), 
+            selectedFile
+          );
+          
+          // Заменяем оптимистичное сообщение реальным
+          setMessages(prev => 
+            prev.map(msg => msg.id === optimisticMessage.id ? message : msg)
+          );
+          
+          // Обновляем кэш
+          setMessageCache(prev => ({
+            ...prev,
+            [selectedChat.toString()]: prev[selectedChat.toString()].map(msg => 
+              msg.id === optimisticMessage.id ? message : msg
+            )
+          }));
+          
+        } catch (fileError) {
+          console.error('Ошибка при отправке файла:', fileError);
+          setError(fileError instanceof Error ? fileError.message : 'Ошибка при отправке файла');
+          
+          // Удаляем оптимистичное сообщение при ошибке
+          setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+          setMessageCache(prev => ({
+            ...prev,
+            [selectedChat.toString()]: prev[selectedChat.toString()].filter(msg => 
+              msg.id !== optimisticMessage.id
+            )
+          }));
         }
         
-        const data = await response.json();
-        console.log('Файл успешно отправлен:', data);
-        
-      } catch (fileError) {
-        console.error('Ошибка при отправке файла:', fileError);
-        setError(fileError instanceof Error ? fileError.message : 'Failed to send file');
+        setLoading(false);
+        return;
       }
+      
+      // Если нет файла, отправляем обычное текстовое сообщение
+      // Создаем оптимистичное сообщение
+      const optimisticMessage: Message = {
+        id: Date.now(), // Временный ID
+        text: newMessage,
+        timestamp: new Date().toISOString(),
+        fromUser: true,
+        media: [],
+        isFree: true,
+        price: 0,
+        isNew: true
+      };
+
+      // Оптимистично обновляем UI
+      setMessages(prev => [...prev, optimisticMessage]);
+      setMessageCache(prev => ({
+        ...prev,
+        [selectedChat.toString()]: [...(prev[selectedChat.toString()] || []), optimisticMessage]
+      }));
+      setNewMessage(''); // Очищаем поле ввода сразу
+
+      // Отправляем сообщение на сервер
+      try {
+        setError(null);
+        const message = await sendMessage(selectedChat.toString(), newMessage);
+        
+        // Заменяем оптимистичное сообщение реальным
+        setMessages(prev => 
+          prev.map(msg => msg.id === optimisticMessage.id ? message : msg)
+        );
+        setMessageCache(prev => ({
+          ...prev,
+          [selectedChat.toString()]: prev[selectedChat.toString()].map(msg => 
+            msg.id === optimisticMessage.id ? message : msg
+          )
+        }));
+      } catch (error) {
+        // В случае ошибки удаляем оптимистичное сообщение
+        setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+        setMessageCache(prev => ({
+          ...prev,
+          [selectedChat.toString()]: prev[selectedChat.toString()].filter(msg => msg.id !== optimisticMessage.id)
+        }));
+        setError(error instanceof Error ? error.message : 'Failed to send message');
+        console.error('Failed to send message:', error);
+      }
+    } finally {
+      setLoading(false);
     }
-    
-    setSelectedFile(null);
-    setPreviewUrl(null);
   };
 
   // Обработчик скролла для загрузки более ранних сообщений

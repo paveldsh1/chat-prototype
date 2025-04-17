@@ -9,9 +9,10 @@ export async function GET(
   { params }: { params: { chatId: string } }
 ) {
   try {
-    // Сохраняем chatId как строку и преобразуем в число только где необходимо
-    const chatId = params.chatId;
-    
+    // Деструктурируем chatId из params
+    const { chatId } = params;
+    console.log(`Получение сообщений для чата: ${chatId}`);
+
     // Получаем параметры запроса
     const url = new URL(request.url);
     const limit = url.searchParams.get('limit') || '30';
@@ -73,7 +74,7 @@ export async function GET(
         console.log(`Media sample:`, JSON.stringify(msg.media[0]).substring(0, 300));
       }
       
-      // Безопасно преобразуем chatId в число
+      // Безопасно преобразуем chatId в число для сравнения
       const chatIdNum = parseInt(chatId);
       
       return {
@@ -113,8 +114,8 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching messages:', error);
     
-    // Получаем chatId из параметров
-    const chatId = params.chatId;
+    // Извлекаем chatId из params напрямую для мока
+    const { chatId } = params;
     
     // В случае любой ошибки возвращаем тестовые данные
     return NextResponse.json({
@@ -131,9 +132,9 @@ export async function POST(
   { params }: { params: { chatId: string } }
 ) {
   try {
-    // Сохраняем chatId как строку
-    const chatId = params.chatId;
-    console.log('Sending message to chat:', chatId);
+    // Деструктурируем chatId сразу из params
+    const { chatId } = params;
+    console.log(`Отправка сообщения в чат: ${chatId}`);
     
     // Проверяем тип содержимого запроса
     const contentType = request.headers.get('content-type') || '';
@@ -263,10 +264,7 @@ export async function POST(
             isFree: true,
             price: 0,
             isNew: true,
-            media: file ? [{
-              type: file.type.includes('image') ? 'photo' : 'video',
-              src: URL.createObjectURL(file)
-            }] : []
+            media: []
           }
         });
       }

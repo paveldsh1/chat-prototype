@@ -118,9 +118,22 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
             onClick={handleFileSelect}
             disabled={isLoading}
             className="bg-green-500 hover:bg-green-600 text-white px-4 h-10 flex items-center gap-1"
+            style={{
+              position: 'relative',
+              overflow: 'hidden',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+              animation: 'pulse 2s infinite'
+            }}
           >
             <Paperclip className="h-5 w-5" />
             <span className="hidden sm:inline">Фото</span>
+            <style jsx global>{`
+              @keyframes pulse {
+                0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+                70% { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+              }
+            `}</style>
           </Button>
         </div>
       </form>

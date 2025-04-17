@@ -432,4 +432,36 @@ export async function pollAuthStatus(attemptId: string): Promise<AccountInfo> {
       ? error 
       : new Error('Failed to check authentication status.');
   }
+}
+
+// Добавить функцию для отправки файлов в сообщении
+export async function sendMessageWithFile(chatId: string, text: string, file: File): Promise<Message> {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('text', text || ' '); // Если текста нет, отправляем пробел
+  
+  const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
+    method: 'POST',
+    body: formData
+  });
+  
+  const responseData = await handleApiResponse(response) as {
+    data: {
+      id: number;
+      text: string;
+      createdAt: string;
+      media?: any[];
+    }
+  };
+  
+  return {
+    id: responseData.data?.id || Date.now(),
+    text: responseData.data?.text || text || '',
+    fromUser: true,
+    timestamp: responseData.data?.createdAt || new Date().toISOString(),
+    media: responseData.data?.media || [],
+    isNew: true,
+    isFree: true,
+    price: 0
+  };
 } 
