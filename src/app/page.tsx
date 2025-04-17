@@ -188,6 +188,16 @@ export default function Home() {
           
           // Устанавливаем сообщения для отображения
           setMessages(sortedMessages);
+          
+          // Прокручиваем к последнему сообщению после загрузки и рендеринга
+          setTimeout(() => {
+            if (messagesContainerRef.current && isMounted) {
+              messagesContainerRef.current.scrollTo({
+                top: messagesContainerRef.current.scrollHeight,
+                behavior: 'auto'
+              });
+            }
+          }, 100);
         }
       } catch (error) {
         console.error(`Failed to fetch messages for chat ${chatIdStr}:`, error);
@@ -217,6 +227,16 @@ export default function Home() {
     } else {
       console.log(`Using cached messages for chat ${chatIdStr}, ${messageCache[chatIdStr].length} messages available`);
       setMessages(messageCache[chatIdStr]);
+      
+      // Прокручиваем к последнему сообщению даже если используем кэш
+      setTimeout(() => {
+        if (messagesContainerRef.current && isMounted) {
+          messagesContainerRef.current.scrollTo({
+            top: messagesContainerRef.current.scrollHeight,
+            behavior: 'auto'
+          });
+        }
+      }, 100);
     }
     
     // Функция для обновления сообщений
