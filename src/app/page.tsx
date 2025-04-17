@@ -11,6 +11,7 @@ import type { Chat, Message, AccountInfo, MessagePaginationResponse } from "@/li
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import MessageItem from "@/components/MessageItem";
+import { Paperclip, X } from 'lucide-react';
 
 export default function Home() {
   const [chats, setChats] = useState<Chat[]>([]);
@@ -28,6 +29,9 @@ export default function Home() {
   const [paginationCache, setPaginationCache] = useState<Record<string, { next_id: string | null }>>({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef<number>(0);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Проверка авторизации и загрузка данных
   useEffect(() => {
@@ -269,9 +273,39 @@ export default function Home() {
     }
   };
 
-  // Отправка сообщения
+  // Создаем URL для превью при выборе файла
+  useEffect(() => {
+    if (selectedFile && selectedFile.type.startsWith('image/')) {
+      const url = URL.createObjectURL(selectedFile);
+      setPreviewUrl(url);
+      
+      // Очищаем URL при размонтировании компонента
+      return () => URL.revokeObjectURL(url);
+    }
+  }, [selectedFile]);
+
+  const handleFileSelect = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      console.log('File selected:', file.name, file.type, file.size);
+    }
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleSendMessage = async () => {
-    if (!selectedChat || !newMessage.trim()) return;
+    if (!selectedChat || (!newMessage.trim() && !selectedFile)) return;
 
     // Создаем оптимистичное сообщение
     const optimisticMessage: Message = {
@@ -318,6 +352,39 @@ export default function Home() {
       setError(error instanceof Error ? error.message : 'Failed to send message');
       console.error('Failed to send message:', error);
     }
+
+    if (selectedFile) {
+      console.log('Sending message with file:', selectedFile.name);
+      // Здесь добавьте логику отправки файла
+      
+      // Отправляем формдату с файлом
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      if (newMessage.trim()) {
+        formData.append('text', newMessage.trim());
+      }
+      
+      try {
+        const response = await fetch(`/api/onlyfans/chats/${selectedChat.toString()}/messages`, {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!response.ok) {
+          throw new Error('Ошибка при отправке файла');
+        }
+        
+        const data = await response.json();
+        console.log('Файл успешно отправлен:', data);
+        
+      } catch (fileError) {
+        console.error('Ошибка при отправке файла:', fileError);
+        setError(fileError instanceof Error ? fileError.message : 'Failed to send file');
+      }
+    }
+    
+    setSelectedFile(null);
+    setPreviewUrl(null);
   };
 
   // Обработчик скролла для загрузки более ранних сообщений
@@ -588,24 +655,71 @@ export default function Home() {
         </div>
 
         <div className="sticky bottom-0 p-4 border-t bg-white mt-auto">
-          <div className="flex gap-2">
-            <Input
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Введите сообщение..."
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-            />
-            <Button 
-              onClick={handleSendMessage}
-              disabled={loading || !newMessage.trim()}
-            >
-              Отправить
-            </Button>
+          <div className="flex flex-col gap-2">
+            {selectedFile && (
+              <div className="p-3 bg-gray-100 rounded-md flex items-start">
+                <div className="flex-1 flex items-center gap-3">
+                  {previewUrl && (
+                    <div className="relative w-16 h-16 rounded overflow-hidden border border-gray-300">
+                      <img 
+                        src={previewUrl} 
+                        alt="Предпросмотр" 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <p className="font-medium text-sm truncate max-w-xs">{selectedFile.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {(selectedFile.size / 1024).toFixed(1)} КБ
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearSelectedFile}
+                  className="text-gray-500 hover:text-gray-700 p-1"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            )}
+            
+            <div className="flex gap-2">
+              <Input
+                value={newMessage}
+                onChange={(e) => setNewMessage(e.target.value)}
+                placeholder="Введите сообщение..."
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+              />
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+                accept="image/*"
+              />
+              <Button 
+                onClick={handleSendMessage}
+                disabled={loading || (!newMessage.trim() && !selectedFile)}
+                className="bg-blue-500 hover:bg-blue-600 text-white"
+              >
+                Отправить
+              </Button>
+              <Button 
+                type="button"
+                onClick={handleFileSelect}
+                className="bg-green-500 hover:bg-green-600 text-white flex items-center gap-1"
+              >
+                <Paperclip className="h-5 w-5" />
+                <span className="hidden sm:inline">Фото</span>
+              </Button>
+            </div>
           </div>
         </div>
       </div>

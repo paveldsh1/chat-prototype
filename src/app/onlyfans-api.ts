@@ -54,7 +54,29 @@ export async function getChatMessages(chatId: number): Promise<Message[]> {
   }));
 }
 
-export async function sendMessage(chatId: number, text: string): Promise<Message> {
+export async function sendMessage(chatId: number, text: string, file?: File): Promise<Message> {
+  // Если файл присутствует, используем FormData для отправки
+  if (file) {
+    const formData = new FormData();
+    formData.append('text', text);
+    formData.append('file', file);
+    
+    const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
+      method: 'POST',
+      body: formData,
+    });
+    
+    const data = await handleApiResponse(response);
+    
+    return {
+      id: data.id,
+      text: data.text,
+      fromUser: true,
+      timestamp: data.createdAt
+    };
+  }
+  
+  // Если файла нет, отправляем только текст
   const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
     method: 'POST',
     headers: {

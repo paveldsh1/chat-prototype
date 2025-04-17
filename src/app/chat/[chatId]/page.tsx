@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import MessageItem from "@/components/MessageItem";
-import MessageInput from "@/components/MessageInput";
+import ChatInput from "@/components/ChatInput";
 import LoadingSpinner from "@/components/LoadingSpinner";
 
 interface Message {
@@ -35,6 +35,7 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [nextId, setNextId] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [sendingMessage, setSendingMessage] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const fetchMessages = async (lastMessageId?: string) => {
@@ -81,12 +82,98 @@ export default function ChatPage() {
   };
 
   useEffect(() => {
+    if (!chatId) {
+      setError("ID чата не указан");
+      setLoading(false);
+      return;
+    }
+    
     fetchMessages();
   }, [chatId]);
 
-  const handleSendMessage = async (text: string) => {
-    // Реализация отправки сообщения
-    console.log("Отправка сообщения:", text);
+  const handleSendMessage = async (text: string, file?: File) => {
+    try {
+      // Защита от повторной отправки
+      if (sendingMessage) return;
+      setSendingMessage(true);
+      
+      console.log("Отправка сообщения:", { text, file: file ? `${file.name} (${file.type})` : 'none' });
+      
+      // Создаем временный ID для сообщения
+      const tempId = `temp-${Date.now()}`;
+      
+      // Подготавливаем новое сообщение для отображения
+      const newMessage: Message = {
+        id: tempId,
+        text: text,
+        fromUser: {
+          id: 'you',
+          name: 'Вы',
+          username: 'you',
+          avatar: null
+        },
+        mediaType: file ? (file.type.includes('image') ? 'photo' : 'video') : null,
+        mediaUrl: file ? URL.createObjectURL(file) : null,
+        createdAt: new Date().toISOString(),
+        isFromUser: true,
+        price: 0,
+        isFree: true,
+        isOpened: true
+      };
+      
+      // Добавляем временное сообщение в список
+      setMessages(prev => [newMessage, ...prev]);
+      
+      // Прокручиваем вниз к новому сообщению
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+      
+      // Отправляем сообщение на сервер
+      let formData = new FormData();
+      formData.append('text', text);
+      
+      if (file) {
+        console.log("Добавление файла к FormData:", file.name, file.type, file.size);
+        formData.append('file', file);
+      }
+      
+      console.log("Отправка запроса на сервер:", `/api/onlyfans/chats/${chatId}/messages`);
+      const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
+        method: 'POST',
+        body: file ? formData : JSON.stringify({ text }),
+        headers: file ? undefined : {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log("Статус ответа:", response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Ошибка при отправке:", response.status, errorText);
+        throw new Error(`Не удалось отправить сообщение: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log("Ответ сервера:", data);
+      
+      // Заменяем временное сообщение на реальное с сервера
+      setMessages(prev => prev.map(msg => 
+        msg.id === tempId ? {
+          ...msg,
+          id: data.data.id.toString(),
+          createdAt: data.data.createdAt,
+          // Другие поля, которые могут прийти с сервера
+        } : msg
+      ));
+      
+    } catch (error) {
+      console.error('Ошибка при отправке сообщения:', error);
+      // Можно добавить уведомление об ошибке
+    } finally {
+      setSendingMessage(false);
+    }
   };
 
   if (loading) {
@@ -140,8 +227,11 @@ export default function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
       
-      <div className="p-4 border-t">
-        <MessageInput onSendMessage={handleSendMessage} />
+      <div className="p-4 border-t bg-white">
+        <ChatInput 
+          onSendMessage={handleSendMessage} 
+          isLoading={sendingMessage} 
+        />
       </div>
     </div>
   );

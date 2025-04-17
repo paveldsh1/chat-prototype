@@ -43,16 +43,6 @@ export default function MessageInput({ onSendMessage, isLoading = false }: Messa
         className="hidden"
         accept="image/*,video/*"
       />
-      
-      <Button
-        type="button"
-        size="icon"
-        variant="ghost"
-        onClick={handleFileSelect}
-        disabled={isLoading}
-      >
-        <Paperclip className="h-5 w-5" />
-      </Button>
 
       <div className="flex-1 space-y-2">
         {selectedFile && (
@@ -83,8 +73,21 @@ export default function MessageInput({ onSendMessage, isLoading = false }: Messa
         type="submit" 
         size="icon" 
         disabled={isLoading || (!text.trim() && !selectedFile)}
+        className="bg-blue-500 hover:bg-blue-600"
       >
         <Send className="h-5 w-5" />
+      </Button>
+
+      <Button
+        type="button"
+        variant="secondary"
+        onClick={handleFileSelect}
+        disabled={isLoading}
+        aria-label="Прикрепить файл"
+        className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-3 py-2"
+      >
+        <Paperclip className="h-5 w-5" />
+        <span className="hidden sm:inline">Фото</span>
       </Button>
     </form>
   );
