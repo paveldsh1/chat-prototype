@@ -32,6 +32,8 @@ export default function Home() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isSending, setIsSending] = useState<boolean>(false);
+  const isUpdatingRef = useRef<boolean>(false);
 
   // Проверка авторизации и загрузка данных
   useEffect(() => {
@@ -69,18 +71,26 @@ export default function Home() {
             try {
               const messageResponse = await getChatMessages(chat.id.toString());
               
-              // Получаем и сортируем сообщения
-              const sortedMessages = messageResponse.messages
-                .map(msg => ({
-                  ...msg,
-                  media: msg.media?.map(m => ({
-                    ...m,
-                    url: m.files?.full?.url || m.url || ''
-                  })) || []
-                }))
-                .sort((a, b) => 
-                  new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-                );
+              // Обработка сообщений и их медиа
+              const processedMessages = messageResponse.messages.map(msg => ({
+                ...msg,
+                media: msg.media?.map(m => ({
+                  ...m,
+                  url: m.files?.full?.url || m.url || ''
+                })) || []
+              }));
+              
+              // Удаляем возможные дубликаты по ID
+              const uniqueMessages = Array.from(
+                new Map(processedMessages.map(msg => [msg.id, msg])).values()
+              );
+              
+              // Сортируем сообщения по времени
+              const sortedMessages = uniqueMessages.sort((a, b) => 
+                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+              );
+              
+              console.log(`Loaded ${sortedMessages.length} messages for chat ${chat.id}`);
               
               // Сохраняем сообщения и информацию о пагинации
               newMessageCache[chat.id.toString()] = sortedMessages;
@@ -124,6 +134,9 @@ export default function Home() {
       return;
     }
     
+    // Флаг, который будет показывать, что компонент размонтирован
+    let isMounted = true;
+    
     // Очищаем текущие сообщения при переключении чата
     setMessages([]);
     
@@ -132,19 +145,33 @@ export default function Home() {
     console.log(`Loading messages for chat: ${chatIdStr}`);
     
     // Загружаем сообщения, если их еще нет в кэше
-    if (!messageCache[chatIdStr] || messageCache[chatIdStr].length === 0) {
-      (async () => {
-        try {
-          setLoading(true);
-          const response = await getChatMessages(chatIdStr);
-          
-          // Убедимся, что сообщения отсортированы
-          const sortedMessages = [...response.messages].sort((a, b) => 
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-          );
-          
-          console.log(`Loaded ${sortedMessages.length} messages for chat ${chatIdStr}`);
-          
+    const loadInitialMessages = async () => {
+      try {
+        setLoading(true);
+        const response = await getChatMessages(chatIdStr);
+        
+        // Обработка полученных сообщений и медиа
+        const processedMessages = response.messages.map(msg => ({
+          ...msg,
+          media: msg.media?.map(m => ({
+            ...m,
+            url: m.files?.full?.url || m.url || ''
+          })) || []
+        }));
+        
+        // Убедимся, что сообщения отсортированы и уникальны
+        const uniqueMessages = Array.from(
+          new Map(processedMessages.map(msg => [msg.id, msg])).values()
+        );
+        
+        const sortedMessages = uniqueMessages.sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        
+        console.log(`Loaded ${sortedMessages.length} messages for chat ${chatIdStr}`);
+        
+        // Обновляем только если компонент все еще смонтирован
+        if (isMounted) {
           // Сохраняем в кэш
           setMessageCache(prev => ({
             ...prev,
@@ -161,8 +188,10 @@ export default function Home() {
           
           // Устанавливаем сообщения для отображения
           setMessages(sortedMessages);
-        } catch (error) {
-          console.error(`Failed to fetch messages for chat ${chatIdStr}:`, error);
+        }
+      } catch (error) {
+        console.error(`Failed to fetch messages for chat ${chatIdStr}:`, error);
+        if (isMounted) {
           setError(error instanceof Error ? error.message : 'Unknown error');
           // Сбрасываем кэш для данного чата
           setMessageCache(prev => ({
@@ -174,70 +203,154 @@ export default function Home() {
             [chatIdStr]: { next_id: null }
           }));
           setMessages([]);
-        } finally {
+        }
+      } finally {
+        if (isMounted) {
           setLoading(false);
         }
-      })();
+      }
+    };
+    
+    // Если в кэше нет сообщений, загружаем их
+    if (!messageCache[chatIdStr] || messageCache[chatIdStr].length === 0) {
+      loadInitialMessages();
     } else {
       console.log(`Using cached messages for chat ${chatIdStr}, ${messageCache[chatIdStr].length} messages available`);
       setMessages(messageCache[chatIdStr]);
     }
     
-    // Настраиваем интервал для обновления сообщений каждую секунду
-    console.log("Настройка интервала обновления сообщений...");
-    const intervalId = setInterval(() => {
+    // Функция для обновления сообщений
+    const fetchNewMessages = async () => {
+      if (!isMounted) return;
+      
       console.log("Запрос новых сообщений для чата:", chatIdStr);
       
-      getChatMessages(chatIdStr).then(response => {
+      try {
+        const response = await getChatMessages(chatIdStr);
+        if (!isMounted) return;
+        
         console.log(`Получено ${response.messages.length} сообщений от API`);
         
-        // Обновляем сообщения, добавляя только новые
-        setMessages(prevMessages => {
-          const existingIds = new Set(prevMessages.map(msg => msg.id));
+        // Обновляем состояние только если компонент все еще смонтирован
+        if (isMounted) {
+          // Получаем актуальные сообщения из состояния и кэша
+          const currentMessages = messageCache[chatIdStr] || [];
+          
+          // Преобразуем массив текущих сообщений в Set для быстрого поиска
+          const existingIds = new Set(currentMessages.map(msg => msg.id));
+          
+          // Фильтруем новые сообщения, которых еще нет в текущем массиве сообщений
           const newMessages = response.messages.filter(msg => !existingIds.has(msg.id));
           
           if (newMessages.length > 0) {
             console.log(`Добавлено ${newMessages.length} новых сообщений`);
             
-            // Прокручиваем чат вниз при новых сообщениях
-            setTimeout(() => {
-              messagesContainerRef.current?.scrollTo({
-                top: messagesContainerRef.current.scrollHeight,
-                behavior: 'smooth'
-              });
-            }, 100);
-            
-            // Обновляем кэш сообщений
-            const updatedMessages = [...newMessages, ...prevMessages];
-            setMessageCache(prev => ({
-              ...prev,
-              [chatIdStr]: updatedMessages
+            // Обработка медиа
+            const processedNewMessages = newMessages.map(msg => ({
+              ...msg,
+              media: msg.media?.map(m => ({
+                ...m,
+                url: m.files?.full?.url || m.url || ''
+              })) || []
             }));
             
-            return updatedMessages;
+            // Обновляем состояние сообщений, используя функциональное обновление
+            setMessages(prevMessages => {
+              // Объединяем существующие и новые сообщения
+              const allMessages = [...prevMessages, ...processedNewMessages];
+              
+              // Удаляем дубликаты по ID
+              const uniqueMessages = Array.from(
+                new Map(allMessages.map(msg => [msg.id, msg])).values()
+              );
+              
+              // Сортируем сообщения по времени
+              return uniqueMessages.sort((a, b) => 
+                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+              );
+            });
+            
+            // Обновляем кэш сообщений
+            setMessageCache(prev => {
+              const cachedMessages = prev[chatIdStr] || [];
+              
+              // Объединяем кэшированные и новые сообщения
+              const allMessages = [...cachedMessages, ...processedNewMessages];
+              
+              // Удаляем дубликаты по ID
+              const uniqueMessages = Array.from(
+                new Map(allMessages.map(msg => [msg.id, msg])).values()
+              );
+              
+              // Сортируем по времени
+              const sortedMessages = uniqueMessages.sort((a, b) => 
+                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+              );
+              
+              return {
+                ...prev,
+                [chatIdStr]: sortedMessages
+              };
+            });
+            
+            // Прокручиваем чат вниз при новых сообщениях
+            setTimeout(() => {
+              if (messagesContainerRef.current) {
+                messagesContainerRef.current.scrollTo({
+                  top: messagesContainerRef.current.scrollHeight,
+                  behavior: 'smooth'
+                });
+              }
+            }, 100);
           }
           
-          return prevMessages;
-        });
-        
-        // Обновляем информацию о пагинации
-        setPaginationCache(prev => ({
-          ...prev,
-          [chatIdStr]: { 
-            next_id: response.pagination?.next_id || null 
-          }
-        }));
-      }).catch(err => {
+          // Обновляем информацию о пагинации
+          setPaginationCache(prev => ({
+            ...prev,
+            [chatIdStr]: { 
+              next_id: response.pagination?.next_id || null 
+            }
+          }));
+        }
+      } catch (err) {
         console.error("Ошибка при обновлении сообщений:", err);
-      });
-    }, 1000);
+      }
+    };
+    
+    // Настраиваем интервал для обновления сообщений каждую секунду
+    console.log("Настройка интервала обновления сообщений...");
+    
+    const updateMessagesWithDebounce = async () => {
+      // Если запрос уже выполняется или компонент размонтирован, пропускаем
+      if (isUpdatingRef.current || !isMounted) {
+        console.log("Предыдущий запрос еще не завершен или компонент размонтирован, пропускаем");
+        return;
+      }
+      
+      isUpdatingRef.current = true;
+      
+      try {
+        await fetchNewMessages();
+      } finally {
+        // Обязательно сбрасываем флаг, даже если произошла ошибка
+        isUpdatingRef.current = false;
+      }
+    };
+    
+    const intervalId = setInterval(updateMessagesWithDebounce, 1000);
+    
+    // Сразу запрашиваем первый раз, не дожидаясь первого интервала
+    updateMessagesWithDebounce();
     
     // Очищаем интервал при размонтировании или смене чата
     return () => {
       console.log("Очистка интервала обновления сообщений");
+      isMounted = false;
       clearInterval(intervalId);
+      // Сбрасываем флаг обновления
+      isUpdatingRef.current = false;
     };
-  }, [selectedChat, messageCache]);
+  }, [selectedChat]);
 
   // Функция загрузки более ранних сообщений
   const loadEarlierMessages = async () => {
@@ -245,45 +358,108 @@ export default function Home() {
       return;
     }
     
+    // Блокируем повторные загрузки на время выполнения
+    setLoadingMore(true);
+    
+    // Временно блокируем автоматическое обновление сообщений
+    isUpdatingRef.current = true;
+    
+    // Флаг для отслеживания размонтирования
+    let isComponentMounted = true;
+    
     try {
-      setLoadingMore(true);
-      
       const chatIdStr = selectedChat.toString();
       const nextId = paginationCache[chatIdStr]?.next_id;
       console.log(`Loading earlier messages for chat ${chatIdStr}, next_id: ${nextId}`);
       
       const response = await getChatMessages(chatIdStr, nextId || undefined);
       
-      // Убедимся, что сообщения отсортированы
-      const sortedNewMessages = [...response.messages].sort((a, b) => 
+      // Проверяем, что компонент всё ещё смонтирован
+      if (!isComponentMounted) return;
+      
+      // Обработка полученных сообщений и их медиа
+      const processedMessages = response.messages.map(msg => ({
+        ...msg,
+        media: msg.media?.map(m => ({
+          ...m,
+          url: m.files?.full?.url || m.url || ''
+        })) || []
+      }));
+      
+      // Сортируем полученные сообщения
+      const sortedNewMessages = [...processedMessages].sort((a, b) => 
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       );
       
+      // Получаем актуальные данные из состояния
+      const currentMessages = messageCache[chatIdStr] || [];
+      
       // Получаем текущие ID сообщений для предотвращения дублирования
-      const existingIds = new Set(messages.map(m => m.id));
+      const existingIds = new Set(currentMessages.map(m => m.id));
       
       // Фильтруем новые сообщения, которых еще нет
       const uniqueNewMessages = sortedNewMessages.filter(msg => !existingIds.has(msg.id));
       
       console.log(`Loaded ${sortedNewMessages.length} earlier messages, ${uniqueNewMessages.length} are new`);
       
-      // Обновляем кэш
+      if (uniqueNewMessages.length === 0) {
+        console.log('No new messages found, updating pagination info only');
+        // Если нет новых сообщений, просто обновляем информацию о пагинации
+        setPaginationCache(prev => ({
+          ...prev,
+          [chatIdStr]: { 
+            next_id: response.pagination?.next_id || null 
+          }
+        }));
+        
+        // Разблокируем загрузки
+        setLoadingMore(false);
+        isUpdatingRef.current = false;
+        
+        return;
+      }
+      
+      // Сохраняем текущую позицию скролла для восстановления после обновления
+      if (messagesContainerRef.current) {
+        scrollPositionRef.current = messagesContainerRef.current.scrollHeight - messagesContainerRef.current.scrollTop;
+      }
+      
+      // Обновляем сообщения, используя функциональное обновление
+      setMessages(prevMessages => {
+        // Объединяем новые и существующие сообщения
+        const allMessages = [...uniqueNewMessages, ...prevMessages];
+        
+        // Удаляем дубликаты по ID
+        const uniqueMessages = Array.from(
+          new Map(allMessages.map(msg => [msg.id, msg])).values()
+        );
+        
+        // Сортируем сообщения по времени
+        return uniqueMessages.sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+      });
+      
+      // Обновляем кэш сообщений
       setMessageCache(prev => {
         const chatMessages = prev[chatIdStr] || [];
-        // Используем Set для удаления дубликатов по ID
-        const allMessageIds = new Set([...chatMessages, ...uniqueNewMessages].map(m => m.id));
-        const uniqueMessages = [...allMessageIds].map(id => 
-          [...chatMessages, ...uniqueNewMessages].find(m => m.id === id)
-        ).filter(Boolean) as Message[];
         
-        // Сортируем все сообщения по времени
-        const sortedAllMessages = uniqueMessages.sort((a, b) => 
+        // Объединяем все сообщения
+        const allMessages = [...uniqueNewMessages, ...chatMessages];
+        
+        // Удаляем дубликаты по ID
+        const uniqueMessages = Array.from(
+          new Map(allMessages.map(msg => [msg.id, msg])).values()
+        );
+        
+        // Сортируем по времени
+        const sortedMessages = uniqueMessages.sort((a, b) => 
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         
         return {
           ...prev,
-          [chatIdStr]: sortedAllMessages
+          [chatIdStr]: sortedMessages
         };
       });
       
@@ -295,24 +471,24 @@ export default function Home() {
         }
       }));
       
-      // Обновляем сообщения
-      setMessages(prevMessages => {
-        // Объединяем старые и новые сообщения без дубликатов
-        const allMessageIds = new Set([...prevMessages, ...uniqueNewMessages].map(m => m.id));
-        const uniqueMessages = [...allMessageIds].map(id => 
-          [...prevMessages, ...uniqueNewMessages].find(m => m.id === id)
-        ).filter(Boolean) as Message[];
-        
-        // Сортируем все сообщения по времени
-        return uniqueMessages.sort((a, b) => 
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-      });
+      // Восстанавливаем позицию скролла после добавления сообщений
+      setTimeout(() => {
+        if (messagesContainerRef.current && isComponentMounted) {
+          const newScrollTop = messagesContainerRef.current.scrollHeight - scrollPositionRef.current;
+          messagesContainerRef.current.scrollTop = newScrollTop;
+        }
+      }, 100);
     } catch (error) {
+      if (!isComponentMounted) return;
+      
       console.error(`Failed to fetch earlier messages:`, error);
       setError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
-      setLoadingMore(false);
+      if (isComponentMounted) {
+        setLoadingMore(false);
+        // Разблокируем автоматическое обновление сообщений
+        isUpdatingRef.current = false;
+      }
     }
   };
 
@@ -349,6 +525,11 @@ export default function Home() {
 
   const handleSendMessage = async () => {
     if (!selectedChat || (!newMessage.trim() && !selectedFile)) return;
+    
+    setIsSending(true);
+    
+    // Временно отключаем автоматическое обновление сообщений
+    isUpdatingRef.current = true;
 
     // Создаем оптимистичное сообщение
     const optimisticMessage: Message = {
@@ -362,53 +543,115 @@ export default function Home() {
       isNew: true
     };
 
+    // Очищаем поле ввода сразу
+    setNewMessage('');
+
+    // Получаем ID чата в виде строки для использования в кэше
+    const chatIdStr = selectedChat.toString();
+
     // Оптимистично обновляем UI
     setMessages(prev => [...prev, optimisticMessage]);
-    setMessageCache(prev => ({
-      ...prev,
-      [selectedChat.toString()]: [...(prev[selectedChat.toString()] || []), optimisticMessage]
-    }));
-    setNewMessage(''); // Очищаем поле ввода сразу
 
-    // Отправляем сообщение на сервер
+    // Обновляем кэш сообщений
+    setMessageCache(prev => {
+      const chatMessages = prev[chatIdStr] || [];
+      return {
+        ...prev,
+        [chatIdStr]: [...chatMessages, optimisticMessage]
+      };
+    });
+
     try {
       setError(null);
-      const message = await sendMessage(selectedChat.toString(), newMessage);
+      
+      // Прокручиваем чат вниз после создания оптимистичного сообщения
+      setTimeout(() => {
+        messagesContainerRef.current?.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
+      }, 50);
+      
+      // Фиксируем текст сообщения перед очисткой поля ввода
+      const messageText = newMessage;
+      
+      // Отправляем сообщение на сервер
+      const message = await sendMessage(chatIdStr, messageText);
+      
+      // Обработка медиа в полученном сообщении
+      const processedMessage = {
+        ...message,
+        media: message.media?.map(m => ({
+          ...m,
+          url: m.files?.full?.url || m.url || ''
+        })) || []
+      };
       
       // Заменяем оптимистичное сообщение реальным
       setMessages(prev => 
-        prev.map(msg => msg.id === optimisticMessage.id ? message : msg)
+        prev.map(msg => msg.id === optimisticMessage.id ? processedMessage : msg)
       );
-      setMessageCache(prev => ({
-        ...prev,
-        [selectedChat.toString()]: prev[selectedChat.toString()].map(msg => 
-          msg.id === optimisticMessage.id ? message : msg
-        )
-      }));
+      
+      // Обновляем кэш сообщений
+      setMessageCache(prev => {
+        const chatMessages = prev[chatIdStr] || [];
+        return {
+          ...prev,
+          [chatIdStr]: chatMessages.map(msg => 
+            msg.id === optimisticMessage.id ? processedMessage : msg
+          )
+        };
+      });
     } catch (error) {
       // В случае ошибки удаляем оптимистичное сообщение
       setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
-      setMessageCache(prev => ({
-        ...prev,
-        [selectedChat.toString()]: prev[selectedChat.toString()].filter(msg => msg.id !== optimisticMessage.id)
-      }));
+      setMessageCache(prev => {
+        const chatMessages = prev[chatIdStr] || [];
+        return {
+          ...prev,
+          [chatIdStr]: chatMessages.filter(msg => msg.id !== optimisticMessage.id)
+        };
+      });
       setError(error instanceof Error ? error.message : 'Failed to send message');
       console.error('Failed to send message:', error);
     }
 
+    // Обработка отправки файла, если он выбран
     if (selectedFile) {
       console.log('Sending message with file:', selectedFile.name);
-      // Здесь добавьте логику отправки файла
+      
+      // Создаем оптимистичное сообщение для файла
+      const fileOptimisticMessage: Message = {
+        id: Date.now() + 1, // Другой ID для отличия от текстового сообщения
+        text: '',
+        timestamp: new Date().toISOString(),
+        fromUser: true,
+        media: [{
+          id: Date.now(),
+          type: selectedFile?.type.startsWith('image/') ? 'photo' : 'video',
+          url: previewUrl || ''
+        }],
+        isFree: true,
+        price: 0,
+        isNew: true
+      };
+      
+      // Добавляем в UI оптимистичное сообщение с файлом
+      setMessages(prev => [...prev, fileOptimisticMessage]);
+      setMessageCache(prev => {
+        const chatMessages = prev[chatIdStr] || [];
+        return {
+          ...prev,
+          [chatIdStr]: [...chatMessages, fileOptimisticMessage]
+        };
+      });
       
       // Отправляем формдату с файлом
       const formData = new FormData();
       formData.append('file', selectedFile);
-      if (newMessage.trim()) {
-        formData.append('text', newMessage.trim());
-      }
       
       try {
-        const response = await fetch(`/api/onlyfans/chats/${selectedChat.toString()}/messages`, {
+        const response = await fetch(`/api/onlyfans/chats/${chatIdStr}/messages`, {
           method: 'POST',
           body: formData
         });
@@ -420,14 +663,58 @@ export default function Home() {
         const data = await response.json();
         console.log('Файл успешно отправлен:', data);
         
+        // После успешной отправки файла обновляем сообщения
+        if (data.message) {
+          // Заменяем оптимистичное сообщение с файлом на реальное
+          setMessages(prev => 
+            prev.map(msg => msg.id === fileOptimisticMessage.id ? data.message : msg)
+          );
+          
+          // Обновляем кэш
+          setMessageCache(prev => {
+            const chatMessages = prev[chatIdStr] || [];
+            return {
+              ...prev,
+              [chatIdStr]: chatMessages.map(msg => 
+                msg.id === fileOptimisticMessage.id ? data.message : msg
+              )
+            };
+          });
+        }
       } catch (fileError) {
         console.error('Ошибка при отправке файла:', fileError);
         setError(fileError instanceof Error ? fileError.message : 'Failed to send file');
+        
+        // Удаляем оптимистичное сообщение с файлом
+        setMessages(prev => prev.filter(msg => msg.id !== fileOptimisticMessage.id));
+        setMessageCache(prev => {
+          const chatMessages = prev[chatIdStr] || [];
+          return {
+            ...prev,
+            [chatIdStr]: chatMessages.filter(msg => msg.id !== fileOptimisticMessage.id)
+          };
+        });
       }
     }
     
+    // Сбрасываем состояние UI
     setSelectedFile(null);
     setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    setIsSending(false);
+    
+    // Возобновляем автоматическое обновление сообщений
+    isUpdatingRef.current = false;
+    
+    // Прокручиваем чат вниз после всех операций
+    setTimeout(() => {
+      messagesContainerRef.current?.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }, 200);
   };
 
   // Обработчик скролла для загрузки более ранних сообщений
@@ -442,7 +729,6 @@ export default function Home() {
   };
 
   // Место для отображения сообщений
-  // Улучшаем отображение MessageItem компонента
   const renderMessages = () => {
     if (loading) {
       return (
@@ -460,74 +746,88 @@ export default function Home() {
       );
     }
 
-    // Выводим в консоль первое сообщение для отладки
-    if (messages.length > 0) {
-      console.log('First message:', messages[0]);
-      if (messages[0].media && messages[0].media.length > 0) {
-        console.log('Media in first message:', messages[0].media);
+    // Группируем сообщения по дате для отображения разделителей
+    const messagesByDate = messages.reduce((acc, message) => {
+      // Получаем дату сообщения без времени
+      const messageDate = new Date(message.timestamp).toISOString().split('T')[0];
+      if (!acc[messageDate]) {
+        acc[messageDate] = [];
       }
-    }
+      acc[messageDate].push(message);
+      return acc;
+    }, {} as Record<string, Message[]>);
+
+    // Сортируем даты
+    const sortedDates = Object.keys(messagesByDate).sort();
 
     return (
-      <div className="space-y-4">
-        {messages.map((message, index) => {
-          // Генерируем уникальный ключ, добавляя индекс
-          const uniqueKey = `${message.id}-${index}`;
+      <div className="space-y-6">
+        {sortedDates.map((date) => {
+          const dayMessages = messagesByDate[date];
           
-          // Принудительно добавляем хотя бы одно медиа для отображения заглушки
-          // Для отладки и демонстрации заглушек
-          let forcedMedia = message.media || [];
-          if (forcedMedia.length === 0) {
-            // Каждому третьему сообщению добавляем фото
-            // Каждому пятому видео
-            if (index % 3 === 0) {
-              forcedMedia = [{
-                id: index, // Используем числовой id вместо строки
-                type: 'photo',
-                // Не указываем URL, чтобы вызвать заглушку
-              }];
-            } else if (index % 5 === 0) {
-              forcedMedia = [{
-                id: index, // Используем числовой id вместо строки
-                type: 'video',
-                // Не указываем URL, чтобы вызвать заглушку
-              }];
-            }
-          }
+          // Форматируем дату для отображения
+          const formattedDate = new Date(date).toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          });
           
-          // Подготавливаем данные для MessageItem
-          const messageData = {
-            id: message.id.toString(),
-            text: message.text,
-            fromUser: {
-              id: message.fromUser ? "user" : selectedChat?.toString() || "",
-              name: message.fromUser ? "Вы" : chats.find(c => c.id === selectedChat)?.username || "Пользователь",
-              username: message.fromUser ? "Вы" : chats.find(c => c.id === selectedChat)?.username || "user",
-              avatar: message.fromUser ? null : `https://onlyfans.com/${chats.find(c => c.id === selectedChat)?.username}/avatar`
-            },
-            mediaType: forcedMedia[0]?.type || null,
-            mediaUrl: forcedMedia[0]?.url || null,
-            createdAt: message.timestamp,
-            isFromUser: message.fromUser,
-            price: message.price || 0,
-            isFree: message.isFree !== false,
-            isOpened: true,
-            media: forcedMedia
-          };
-
-          // Добавим логирование для отладки
-          console.log(`Message ${uniqueKey} from user: ${message.fromUser}, will display on ${message.fromUser ? 'right' : 'left'}`);
-
-          // Определяем дату предыдущего сообщения (если оно есть)
-          const previousMessage = index > 0 ? messages[index - 1] : undefined;
-          const previousMessageDate = previousMessage?.timestamp;
-
           return (
-            <MessageItem 
-              key={uniqueKey} 
-              message={messageData} 
-              previousMessageDate={previousMessageDate}
-            />
+            <div key={date} className="space-y-4">
+              {/* Разделитель даты */}
+              <div className="flex justify-center">
+                <div className="bg-gray-100 px-4 py-1 rounded-full text-sm text-gray-500">
+                  {formattedDate}
+                </div>
+              </div>
+              
+              {/* Сообщения за текущий день */}
+              {dayMessages.map((message, index) => {
+                // Генерируем уникальный ключ, добавляя индекс
+                const uniqueKey = `${message.id}-${index}`;
+                
+                // Подготавливаем медиа-данные
+                const mediaData = message.media && message.media.length > 0
+                  ? message.media.map(m => ({
+                      id: typeof m.id === 'number' ? m.id : Number(m.id),
+                      type: m.type,
+                      url: m.url || (m.files?.full?.url || '')
+                    }))
+                  : [];
+                
+                // Подготавливаем данные для MessageItem
+                const messageData = {
+                  id: message.id.toString(),
+                  text: message.text,
+                  fromUser: {
+                    id: message.fromUser ? "user" : selectedChat?.toString() || "",
+                    name: message.fromUser ? "Вы" : chats.find(c => c.id === selectedChat)?.username || "Пользователь",
+                    username: message.fromUser ? "Вы" : chats.find(c => c.id === selectedChat)?.username || "user",
+                    avatar: message.fromUser ? null : `https://onlyfans.com/${chats.find(c => c.id === selectedChat)?.username}/avatar`
+                  },
+                  mediaType: mediaData[0]?.type || null,
+                  mediaUrl: mediaData[0]?.url || null,
+                  createdAt: message.timestamp,
+                  isFromUser: message.fromUser,
+                  price: message.price || 0,
+                  isFree: message.isFree !== false,
+                  isOpened: true,
+                  media: mediaData
+                };
+
+                // Определяем дату предыдущего сообщения (если оно есть)
+                const previousMessage = index > 0 ? dayMessages[index - 1] : undefined;
+                const previousMessageDate = previousMessage?.timestamp;
+
+                return (
+                  <MessageItem 
+                    key={uniqueKey} 
+                    message={messageData} 
+                    previousMessageDate={previousMessageDate}
+                  />
+                );
+              })}
+            </div>
           );
         })}
       </div>
@@ -575,7 +875,7 @@ export default function Home() {
           <p className="text-sm text-gray-500">{account?.username}</p>
           {account?._meta?._credits && (
             <p className="text-sm text-gray-500">
-              Кредиты: {account._meta._credits.balance}
+              Кредиты: {account?._meta?._credits.balance}
             </p>
           )}
           
@@ -733,6 +1033,7 @@ export default function Home() {
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 placeholder="Введите сообщение..."
+                disabled={isSending}
                 onKeyPress={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -746,18 +1047,25 @@ export default function Home() {
                 onChange={handleFileChange}
                 className="hidden"
                 accept="image/*"
+                disabled={isSending}
               />
               <Button 
                 onClick={handleSendMessage}
-                disabled={loading || (!newMessage.trim() && !selectedFile)}
+                disabled={loading || isSending || (!newMessage.trim() && !selectedFile)}
                 className="bg-blue-500 hover:bg-blue-600 text-white"
               >
-                Отправить
+                {isSending ? (
+                  <span className="flex items-center">
+                    <LoadingSpinner size="sm" />
+                    <span className="ml-2">Отправка...</span>
+                  </span>
+                ) : 'Отправить'}
               </Button>
               <Button 
                 type="button"
                 onClick={handleFileSelect}
                 className="bg-green-500 hover:bg-green-600 text-white flex items-center gap-1"
+                disabled={isSending}
               >
                 <Paperclip className="h-5 w-5" />
                 <span className="hidden sm:inline">Фото</span>
