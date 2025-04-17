@@ -1,10 +1,10 @@
 import { useState, useRef, FormEvent, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Paperclip, X } from "lucide-react";
+import { Send, Paperclip, X, DollarSign } from "lucide-react";
 
 interface ChatInputProps {
-  onSendMessage: (text: string, file?: File) => void;
+  onSendMessage: (text: string, file?: File, price?: number) => void;
   isLoading?: boolean;
 }
 
@@ -12,6 +12,7 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
   const [text, setText] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [price, setPrice] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Создаем URL для превью при выборе файла
@@ -30,10 +31,11 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
     
     if (!text.trim() && !selectedFile) return;
     
-    onSendMessage(text, selectedFile || undefined);
+    onSendMessage(text, selectedFile || undefined, selectedFile ? price : undefined);
     setText("");
     setSelectedFile(null);
     setPreviewUrl(null);
+    setPrice(0);
   };
 
   const handleFileSelect = () => {
@@ -44,15 +46,25 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
     const file = e.target.files?.[0];
     if (file) {
       setSelectedFile(file);
-      console.log('File selected:', file.name, file.type, file.size);
     }
   };
 
   const clearSelectedFile = () => {
     setSelectedFile(null);
     setPreviewUrl(null);
+    setPrice(0);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseFloat(e.target.value);
+    // Проверяем, что значение не отрицательное и не NaN
+    if (!isNaN(value) && value >= 0) {
+      setPrice(value);
+    } else {
+      setPrice(0);
     }
   };
 
@@ -84,6 +96,24 @@ export default function ChatInput({ onSendMessage, isLoading = false }: ChatInpu
                 <p className="text-xs text-gray-500">
                   {(selectedFile.size / 1024).toFixed(1)} КБ
                 </p>
+                
+                <div className="mt-2 flex items-center">
+                  <div className="relative flex items-center">
+                    <DollarSign className="h-4 w-4 absolute left-2 text-gray-500" />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={price}
+                      onChange={handlePriceChange}
+                      className="pl-8 pr-2 py-1 w-24 text-sm border rounded"
+                      placeholder="Цена"
+                    />
+                  </div>
+                  <span className="ml-2 text-xs text-gray-500">
+                    {price > 0 ? 'Платный контент' : 'Бесплатно'}
+                  </span>
+                </div>
               </div>
             </div>
             <button

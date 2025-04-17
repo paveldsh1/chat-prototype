@@ -435,10 +435,19 @@ export async function pollAuthStatus(attemptId: string): Promise<AccountInfo> {
 }
 
 // Добавить функцию для отправки файлов в сообщении
-export async function sendMessageWithFile(chatId: string, text: string, file: File): Promise<Message> {
+export async function sendMessageWithFile(chatId: string, text: string, file: File, price: number = 0): Promise<Message> {
+  // Важные логи для отладки
+  console.log(`Отправка файла в чат ${chatId}. Цена: ${price}`);
+  
   const formData = new FormData();
   formData.append('file', file);
   formData.append('text', text || ' '); // Если текста нет, отправляем пробел
+  
+  // Добавляем цену, если она указана
+  if (price > 0) {
+    formData.append('price', price.toString());
+    console.log(`ID чата: ${chatId}, файл: ${file.name}, цена: ${price}`);
+  }
   
   const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
     method: 'POST',
@@ -451,8 +460,16 @@ export async function sendMessageWithFile(chatId: string, text: string, file: Fi
       text: string;
       createdAt: string;
       media?: any[];
+      price?: number;
+      isFree?: boolean;
     }
   };
+  
+  // Логируем ID медиа файлов в ответе
+  if (responseData.data?.media && responseData.data.media.length > 0) {
+    console.log('Полученные медиа ID:', 
+      JSON.stringify(responseData.data.media.map(m => m.id)));
+  }
   
   return {
     id: responseData.data?.id || Date.now(),
@@ -461,7 +478,7 @@ export async function sendMessageWithFile(chatId: string, text: string, file: Fi
     timestamp: responseData.data?.createdAt || new Date().toISOString(),
     media: responseData.data?.media || [],
     isNew: true,
-    isFree: true,
-    price: 0
+    isFree: responseData.data?.isFree !== undefined ? responseData.data.isFree : price === 0,
+    price: responseData.data?.price || price
   };
 } 

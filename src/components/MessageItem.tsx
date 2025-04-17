@@ -272,6 +272,15 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
       console.log('First media type:', message.media[0].type);
       console.log('First media canView:', message.media[0].canView);
       console.log('First media URL used:', message.media[0].files?.full?.url || message.media[0].url || 'нет URL');
+      
+      // Добавляем дополнительную информацию о параметрах типа media_ids, медиафайлов и их структуре
+      console.log('Структура медиа массива:', message.media.map(m => ({
+        id: m.id,
+        type: m.type,
+        hasFiles: Boolean(m.files),
+        sources: m.videoSources ? Object.keys(m.videoSources) : 'нет',
+        alternativeUrls: m.alternatives?.length || 0
+      })));
     }
   }
 
