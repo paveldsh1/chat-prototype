@@ -116,7 +116,7 @@ export default function Home() {
     initialize();
   }, []);
 
-  // Обновляем эффект выбора чата, чтобы использовать кэш
+  // Обновляем эффект выбора чата, чтобы использовать кэш и добавить автообновление
   useEffect(() => {
     if (!selectedChat) {
       // Если чат не выбран, очищаем сообщения
@@ -179,22 +179,65 @@ export default function Home() {
         }
       })();
     } else {
-      // Используем закэшированные сообщения
-      console.log(`Using ${messageCache[chatIdStr].length} cached messages for chat ${chatIdStr}`);
-      // Проверяем ID сообщений в кэше для дебага
-      const messageIds = messageCache[chatIdStr].map(m => m.id);
-      const uniqueIds = new Set(messageIds);
-      if (messageIds.length !== uniqueIds.size) {
-        console.warn(`Found ${messageIds.length - uniqueIds.size} duplicate message IDs in cache`);
-      }
-      
-      // Используем закэшированные сообщения, убедившись, что они отсортированы
-      const sortedMessages = [...messageCache[chatIdStr]].sort((a, b) => 
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
-      setMessages(sortedMessages);
+      console.log(`Using cached messages for chat ${chatIdStr}, ${messageCache[chatIdStr].length} messages available`);
+      setMessages(messageCache[chatIdStr]);
     }
-  }, [selectedChat]);
+    
+    // Настраиваем интервал для обновления сообщений каждую секунду
+    console.log("Настройка интервала обновления сообщений...");
+    const intervalId = setInterval(() => {
+      console.log("Запрос новых сообщений для чата:", chatIdStr);
+      
+      getChatMessages(chatIdStr).then(response => {
+        console.log(`Получено ${response.messages.length} сообщений от API`);
+        
+        // Обновляем сообщения, добавляя только новые
+        setMessages(prevMessages => {
+          const existingIds = new Set(prevMessages.map(msg => msg.id));
+          const newMessages = response.messages.filter(msg => !existingIds.has(msg.id));
+          
+          if (newMessages.length > 0) {
+            console.log(`Добавлено ${newMessages.length} новых сообщений`);
+            
+            // Прокручиваем чат вниз при новых сообщениях
+            setTimeout(() => {
+              messagesContainerRef.current?.scrollTo({
+                top: messagesContainerRef.current.scrollHeight,
+                behavior: 'smooth'
+              });
+            }, 100);
+            
+            // Обновляем кэш сообщений
+            const updatedMessages = [...newMessages, ...prevMessages];
+            setMessageCache(prev => ({
+              ...prev,
+              [chatIdStr]: updatedMessages
+            }));
+            
+            return updatedMessages;
+          }
+          
+          return prevMessages;
+        });
+        
+        // Обновляем информацию о пагинации
+        setPaginationCache(prev => ({
+          ...prev,
+          [chatIdStr]: { 
+            next_id: response.pagination?.next_id || null 
+          }
+        }));
+      }).catch(err => {
+        console.error("Ошибка при обновлении сообщений:", err);
+      });
+    }, 1000);
+    
+    // Очищаем интервал при размонтировании или смене чата
+    return () => {
+      console.log("Очистка интервала обновления сообщений");
+      clearInterval(intervalId);
+    };
+  }, [selectedChat, messageCache]);
 
   // Функция загрузки более ранних сообщений
   const loadEarlierMessages = async () => {
