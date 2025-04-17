@@ -48,20 +48,35 @@ interface Message {
     name: string;
     username: string;
     avatar: string | null;
-  } | boolean; // добавлен boolean для совместимости с временными сообщениями
-  mediaType?: string | null;
-  mediaUrl?: string | null;
+  };
+  mediaType: string | null;
+  mediaUrl: string | null;
   createdAt: string;
-  isFromUser?: boolean;
-  price?: number;
-  isFree?: boolean;
-  isOpened?: boolean;
+  isFromUser: boolean;
+  price: number;
+  isFree: boolean;
+  isOpened: boolean;
   error?: boolean;
   media?: MediaItem[];
 }
 
-interface PaginationData {
-  next_id: string | null;
+interface ApiMessage {
+  id: string;
+  text: string;
+  createdAt: string;
+  fromUser: boolean | {
+    id: string;
+    name: string;
+    username: string;
+    avatar: string | null;
+  };
+  mediaType?: string | null;
+  mediaUrl?: string | null;
+  price?: number;
+  isFree?: boolean;
+  isOpened?: boolean;
+  media?: MediaItem[];
+  error?: boolean;
 }
 
 export default function ChatPage() {
@@ -72,62 +87,79 @@ export default function ChatPage() {
   const [nextId, setNextId] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [sendingError, setSendingError] = useState<string | null>(null);
-  const [message, setMessage] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
-  const [messagePrice, setMessagePrice] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  const fetchMessages = async (loadMore: boolean = false, firstLoad: boolean = false) => {
-    try {
-      setLoading(true);
-      setError(null);
+  // Функция для преобразования ApiMessage в Message
+  const convertToMessage = (apiMessage: ApiMessage): Message => {
+    // Если fromUser это boolean - создаем объект для совместимости
+    const fromUser = typeof apiMessage.fromUser === "boolean" 
+      ? {
+          id: "you",
+          name: "Вы",
+          username: "you",
+          avatar: null
+        }
+      : apiMessage.fromUser;
 
-      // Определяем лимит для первой загрузки или для подгрузки дополнительных сообщений
-      const limit = firstLoad ? 50 : 20;
-      
-      // Определяем URL для запроса сообщений
-      const url = loadMore && messages.length > 0
-        ? `/api/onlyfans/chats/${chatId}/messages?limit=${limit}&beforeMessageId=${messages[messages.length - 1].id}`
-        : `/api/onlyfans/chats/${chatId}/messages?limit=${limit}`;
-      
+    return {
+      id: apiMessage.id,
+      text: apiMessage.text,
+      fromUser: fromUser,
+      mediaType: apiMessage.mediaType || null,
+      mediaUrl: apiMessage.mediaUrl || null,
+      createdAt: apiMessage.createdAt,
+      isFromUser: typeof apiMessage.fromUser === "boolean" ? true : false,
+      price: apiMessage.price || 0,
+      isFree: apiMessage.isFree !== undefined ? apiMessage.isFree : true,
+      isOpened: apiMessage.isOpened !== undefined ? apiMessage.isOpened : true,
+      error: apiMessage.error,
+      media: apiMessage.media
+    };
+  };
+
+  const fetchMessages = async (lastMessageId?: string) => {
+    try {
+      // Формируем URL с учетом пагинации
+      let url = `/api/onlyfans/chats/${chatId}/messages?limit=${lastMessageId ? '20' : '50'}`;
+      if (lastMessageId) {
+        url += `&id=${lastMessageId}`;
+      }
+
       const response = await fetch(url);
+      
       if (!response.ok) {
-        throw new Error(`Failed to fetch messages: ${response.status}`);
+        throw new Error("Не удалось загрузить сообщения");
       }
       
       const data = await response.json();
       
-      // Сортируем новые сообщения по дате создания (новые вверху)
-      const sortedNewMessages = data.messages.sort((a: Message, b: Message) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-      
-      // Обновляем состояние сообщений в зависимости от типа загрузки
-      setMessages(prev => {
-        if (loadMore) {
-          // При подгрузке добавляем новые сообщения в конец списка
-          return [...prev, ...sortedNewMessages];
-        } else {
-          // При первичной загрузке заменяем весь список
-          return sortedNewMessages;
-        }
-      });
+      if (lastMessageId) {
+        // Добавляем старые сообщения в конец списка
+        const convertedMessages = data.messages.map(convertToMessage);
+        setMessages(prev => [...prev, ...convertedMessages]);
+      } else {
+        // Сначала показываем новые сообщения (обратный порядок)
+        const sortedMessages = [...data.messages]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .map(convertToMessage);
+        
+        setMessages(sortedMessages);
+      }
       
       setNextId(data.pagination.next_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Неизвестная ошибка");
+    } finally {
       setLoading(false);
-    } catch (error) {
-      console.error("Error fetching messages:", error);
-      setError("Failed to load messages. Please try again.");
-      setLoading(false);
+      setLoadingMore(false);
     }
   };
 
   const loadMoreMessages = () => {
     if (nextId && !loadingMore) {
       setLoadingMore(true);
-      fetchMessages(true);
+      fetchMessages(nextId);
     }
   };
 
@@ -141,90 +173,108 @@ export default function ChatPage() {
     fetchMessages();
   }, [chatId]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if ((!message.trim() && !files.length) || isSending) return;
-    
+  const handleSendMessage = async (text: string, file?: File, price: number = 0) => {
     try {
-      setSendingError(null);
+      if ((!text.trim() && !file) || isSending) return;
+      
       setIsSending(true);
       
       // Создаем временный ID для сообщения
       const tempId = `temp-${Date.now()}`;
       
-      // Создаем временное сообщение для отображения
-      const tempMessage: Message = {
+      // Подготавливаем новое сообщение для отображения
+      const newMessage: Message = {
         id: tempId,
-        text: message,
+        text: text,
+        fromUser: {
+          id: 'you',
+          name: 'Вы',
+          username: 'you',
+          avatar: null
+        },
+        mediaType: file ? (file.type.includes('image') ? 'photo' : 'video') : null,
+        mediaUrl: file ? URL.createObjectURL(file) : null,
         createdAt: new Date().toISOString(),
-        fromUser: true,
-        // Добавляем временные данные о медиа, если есть файлы
-        media: files.map((file, index) => ({
-          id: `temp-media-${index}`,
-          type: file.type.startsWith('image/') ? 'image' : 'video',
-          url: URL.createObjectURL(file),
-          mimetype: file.type,
-          filename: file.name,
-          size: file.size,
-        })),
+        isFromUser: true,
+        price: price,
+        isFree: price === 0,
+        isOpened: true
       };
       
-      // Добавляем временное сообщение в начало списка (так как новые сообщения отображаются вверху)
-      setMessages(prev => [tempMessage, ...prev]);
+      // Добавляем временное сообщение в начало списка (новые сообщения вверху)
+      setMessages(prev => [newMessage, ...prev]);
       
-      // Очищаем ввод и файлы
-      setMessage('');
-      setFiles([]);
+      // Отправляем сообщение на сервер
+      let formData = new FormData();
+      formData.append('text', text);
       
-      // Формируем FormData для отправки
-      const formData = new FormData();
-      formData.append('text', message);
-      
-      // Добавляем файлы, если они есть
-      if (files.length) {
-        files.forEach(file => {
-          formData.append('files', file);
-        });
+      if (file) {
+        formData.append('file', file);
         
-        // Если установлена цена, добавляем ее
-        if (messagePrice > 0) {
-          formData.append('price', messagePrice.toString());
+        // Добавляем цену, если файл платный
+        if (price > 0) {
+          formData.append('price', price.toString());
         }
       }
       
-      // Отправляем запрос
       const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
         method: 'POST',
-        body: formData,
+        body: file ? formData : JSON.stringify({ text }),
+        headers: file ? undefined : {
+          'Content-Type': 'application/json'
+        }
       });
       
-      if (!response.ok) {
-        // Используем текст ошибки из ответа, если он есть
-        const errorText = await response.text();
-        throw new Error(errorText || `Failed to send message: ${response.status}`);
+      // Читаем ответ в текстовом формате
+      const responseText = await response.text();
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (jsonError) {
+        console.error('Ошибка при парсинге JSON ответа:', jsonError);
+        throw new Error('Неверный формат ответа от сервера');
       }
       
-      // Парсим JSON-ответ
-      const data = await response.json();
+      if (!response.ok) {
+        // Помечаем временное сообщение как ошибочное
+        setMessages(prev => prev.map(msg => 
+          msg.id === tempId ? {
+            ...msg,
+            text: msg.text + ' (Ошибка при отправке)',
+            error: true
+          } : msg
+        ));
+        
+        // Показываем ошибку
+        setError(data.message || data.error || `Не удалось отправить сообщение: ${response.status}`);
+        
+        // Убираем ошибку через 5 секунд
+        setTimeout(() => setError(null), 5000);
+        
+        throw new Error(data.message || data.error || `Не удалось отправить сообщение: ${response.status}`);
+      }
       
-      // Заменяем временное сообщение в списке на реальное, полученное от сервера
-      setMessages(prev => {
-        const updatedMessages = prev.map(msg => 
-          msg.id === tempId ? { ...data.message, fromUser: true } : msg
-        );
-        return updatedMessages;
-      });
+      // Заменяем временное сообщение на реальное с сервера
+      setMessages(prev => prev.map(msg => 
+        msg.id === tempId ? {
+          ...msg,
+          id: data.data.id.toString(),
+          createdAt: data.data.createdAt,
+          price: data.data.price || price,
+          isFree: data.data.isFree !== undefined ? data.data.isFree : price === 0,
+          media: data.data.media || []
+        } : msg
+      ));
       
     } catch (error) {
-      console.error("Error sending message:", error);
-      setSendingError(error instanceof Error ? error.message : "Failed to send message");
+      console.error('Ошибка при отправке сообщения:', error);
+      setError(error instanceof Error ? error.message : 'Произошла ошибка при отправке сообщения');
       
-      // Удаляем временное сообщение в случае ошибки
-      setMessages(prev => prev.filter(msg => !msg.id.startsWith('temp-')));
+      // Убираем ошибку через 5 секунд
+      setTimeout(() => setError(null), 5000);
     } finally {
       setIsSending(false);
-      setMessagePrice(0);
     }
   };
 
@@ -244,7 +294,7 @@ export default function ChatPage() {
     );
   }
 
-  // Отображаем сообщения так, чтобы новые были сверху (обратный порядок)
+  // Отображаем сообщения так, чтобы новые были сверху
   return (
     <div className="flex flex-col h-screen max-w-2xl mx-auto">
       {/* Инпут для отправки сообщений размещаем сверху */}

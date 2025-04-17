@@ -22,8 +22,8 @@ export async function GET(
   { params }: { params: { chatId: string } }
 ) {
   try {
-    // Деструктурируем chatId из params
-    const { chatId } = params;
+    // Получаем chatId асинхронно
+    const chatId = await Promise.resolve(params.chatId);
 
     // Получаем параметры запроса
     const url = new URL(request.url);
@@ -107,7 +107,7 @@ export async function GET(
       };
     });
 
-    // Сортируем сообщения по дате - новые сначала (хотя API должен уже так возвращать)
+    // Сортируем сообщения по дате - новые сначала
     messages.sort((a: any, b: any) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
@@ -124,8 +124,8 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching messages:', error);
     
-    // Извлекаем chatId из params напрямую для мока
-    const { chatId } = params;
+    // Извлекаем chatId из params для мока
+    const chatId = await Promise.resolve(params.chatId);
     
     // В случае любой ошибки возвращаем тестовые данные
     const mockMessages = generateMockMessages(chatId, 10);
@@ -149,8 +149,8 @@ export async function POST(
   { params }: { params: { chatId: string } }
 ) {
   try {
-    // Деструктурируем chatId сразу из params
-    const { chatId } = params;
+    // Получаем chatId асинхронно
+    const chatId = await Promise.resolve(params.chatId);
     
     // Проверяем тип содержимого запроса
     const contentType = request.headers.get('content-type') || '';
@@ -185,8 +185,6 @@ export async function POST(
         fileFormData.append('file', file);
         
         try {
-          console.log('Загружаем файл:', file.name, 'тип:', file.type, 'размер:', file.size);
-          
           // Правильный API URL для загрузки медиа
           const uploadResponse = await fetch(
             `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/medias`,
@@ -206,19 +204,14 @@ export async function POST(
           }
           
           const uploadData = await uploadResponse.json();
-          console.log('Ответ от API загрузки файла:', JSON.stringify(uploadData, null, 2));
           
           // Получаем ID загруженного файла
           if (uploadData.data && uploadData.data.id) {
             // Сохраняем ID медиа-файла в переменную для дальнейшего использования
             const mediaId = uploadData.data.id;
-            console.log('Получен ID медиа:', mediaId);
             
             // Формируем массив ID медиа-файлов для API
             mediaFiles = JSON.stringify([mediaId]);
-            
-            // Важно: логируем ID медиа-файла для отладки
-            console.log('Массив ID медиа-файлов для отправки:', mediaFiles);
           } else {
             console.error('Upload response does not contain media ID', uploadData);
             throw new Error('Ответ API не содержит ID загруженного файла');
@@ -248,7 +241,6 @@ export async function POST(
       // Важное исправление: OnlyFans API ожидает параметр mediaFiles (согласно документации)
       try {
         const mediaIdsArray = JSON.parse(mediaFiles);
-        console.log('Преобразованный массив ID медиа:', mediaIdsArray);
         
         // Пробуем разные варианты параметров согласно документации
         // Вариант 1: mediaFiles как в старой документации
@@ -260,9 +252,6 @@ export async function POST(
         // ВАЖНО: устанавливаем цену для контента, даже если он бесплатный
         // Документация требует указывать цену для медиафайлов
         messageData.price = price;
-        
-        // Логируем итоговые данные для отправки
-        console.log('Итоговые данные для отправки:', JSON.stringify(messageData, null, 2));
       } catch (parseError) {
         console.error('Ошибка при парсинге массива ID медиа:', parseError);
         throw new Error('Невозможно преобразовать список ID медиа для отправки');
@@ -273,8 +262,6 @@ export async function POST(
     try {
       // Исправляем URL эндпоинта согласно документации
       const apiUrl = `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/chats/send-message`;
-      console.log('Отправляем запрос на URL:', apiUrl);
-      console.log('Тело запроса:', JSON.stringify(messageData, null, 2));
       
       const response = await fetch(
         apiUrl,
@@ -290,7 +277,6 @@ export async function POST(
 
       // Читаем тело ответа в текстовом формате
       const responseText = await response.text();
-      console.log('Получен ответ, статус:', response.status, 'Тело:', responseText.substring(0, 500));
       
       // Парсим JSON, если возможно
       let data;
@@ -322,11 +308,6 @@ export async function POST(
             media: []
           }
         });
-      }
-
-      // Логируем в консоль ID медиа, если они есть в ответе
-      if (data.data && data.data.media && data.data.media.length > 0) {
-        console.log('Response media file IDs:', data.data.media.map((m: any) => m.id));
       }
 
       // Возвращаем ответ как есть

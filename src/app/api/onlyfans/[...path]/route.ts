@@ -1,119 +1,127 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_KEY = 'ofapi_wiBTRr5SQwG9WPCydWm6wQx5nhUbAN7ayXA21NH07dfd1f82';
-const ACCOUNT_ID = 'acct_601447d3a13342e0a0da8c16aa35ad07';
+// Константы API
 const API_BASE_URL = 'https://app.onlyfansapi.com/api';
+const API_KEY = 'ofapi_p0wHp23pKLWlqemuMm4gQ2kIuXzqdkp34MYn0E9B081dedfb';
+const ACCOUNT_ID = 'acct_601447d3a13342e0a0da8c16aa35ad07';
 
-async function handler(
+export async function GET(
   req: NextRequest,
   { params }: { params: { path: string[] } }
 ) {
+  return handler(req, params, 'GET');
+}
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { path: string[] } }
+) {
+  return handler(req, params, 'POST');
+}
+
+async function handler(
+  req: NextRequest,
+  params: { path: string[] },
+  method: string
+) {
+  // Ожидаем получение параметров перед их использованием
+  const path = await Promise.resolve(params.path);
+  
   // Обработка авторизации модели
-  if (params.path[0] === 'authenticate') {
+  if (path[0] === 'authenticate') {
     if (req.method === 'POST') {
       try {
         const body = await req.json();
-        const response = await fetch(`${API_BASE_URL}/authenticate`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify(body)
-        });
-
-        const data = await response.json();
-        return NextResponse.json(data, { status: response.status });
-      } catch (error) {
-        console.error('Model Auth Error:', error);
-        return NextResponse.json(
-          { error: 'Failed to authenticate model' },
-          { status: 500 }
-        );
-      }
-    } else if (req.method === 'GET' && params.path[1]) {
-      // Проверка статуса авторизации
-      try {
-        const attemptId = params.path[1];
-        const response = await fetch(`${API_BASE_URL}/authenticate/${attemptId}`, {
-          headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Accept': 'application/json',
+        
+        // Здесь будет логика аутентификации
+        console.log('Received auth request with keys:', Object.keys(body));
+        
+        return NextResponse.json({ 
+          success: true, 
+          token: 'demo_token_123',
+          user: {
+            id: 1,
+            username: 'demo_user',
+            name: 'Demo User'
           }
         });
-
-        const data = await response.json();
-        return NextResponse.json(data, { status: response.status });
       } catch (error) {
-        console.error('Auth Status Error:', error);
-        return NextResponse.json(
-          { error: 'Failed to check authentication status' },
-          { status: 500 }
-        );
+        console.error('Auth error:', error);
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Invalid authentication data' 
+        }, { status: 400 });
       }
     }
   }
 
   // Специальная обработка для проверки аккаунта
-  if (params.path[0] === 'me') {
+  if (path[0] === 'me') {
     try {
       const response = await fetch(`${API_BASE_URL}/${ACCOUNT_ID}/me`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${API_KEY}`,
           'Accept': 'application/json',
-        }
+        },
       });
-
+      
       const data = await response.json();
       return NextResponse.json(data);
     } catch (error) {
-      console.error('Auth Error:', error);
-      return NextResponse.json(
-        { error: 'Failed to authenticate with OnlyFans API' },
-        { status: 500 }
-      );
+      console.error('Error fetching account data:', error);
+      return NextResponse.json({ 
+        error: 'Failed to fetch account data' 
+      }, { status: 500 });
     }
   }
 
   // Обычная обработка других запросов
-  const path = params.path.join('/');
-  const apiPath = path === 'chats' 
+  const pathStr = path.join('/');
+  const apiPath = pathStr === 'chats'
     ? `/${ACCOUNT_ID}/chats`
-    : `/${path}`;
-  const method = req.method;
+    : `/${pathStr}`;
+    
+  // Логируем запрос для отладки
+  console.log(`Proxying ${req.method} request to ${apiPath}`);
 
-  try {
-    const headers: HeadersInit = {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Accept': 'application/json',
-    };
-
-    if (method === 'POST') {
+  // Получаем заголовки и параметры запроса
+  const headers: HeadersInit = {
+    'Authorization': `Bearer ${API_KEY}`,
+    'Accept': 'application/json',
+  };
+  
+  // Если запрос содержит тело, добавляем его
+  let body: BodyInit | null = null;
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    const contentType = req.headers.get('content-type');
+    
+    if (contentType && contentType.includes('application/json')) {
+      body = JSON.stringify(await req.json());
       headers['Content-Type'] = 'application/json';
+    } else if (contentType && contentType.includes('multipart/form-data')) {
+      body = await req.arrayBuffer();
+      // Для multipart/form-data браузер автоматически устанавливает
+      // правильный Content-Type с boundary, поэтому не перезаписываем
+    } else {
+      body = await req.text();
     }
+  }
 
-    const response = await fetch(`${API_BASE_URL}${apiPath}`, {
-      method,
+  // Выполняем запрос к OnlyFans API
+  try {
+    const apiResponse = await fetch(`${API_BASE_URL}${apiPath}`, {
+      method: req.method,
       headers,
-      ...(method === 'POST' ? { body: JSON.stringify(await req.json()) } : {})
+      body
     });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      return NextResponse.json(data, { status: response.status });
-    }
-
+    
+    const data = await apiResponse.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error('API Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to process request to OnlyFans API' },
-      { status: 500 }
-    );
+    console.error(`Error proxying request to ${apiPath}:`, error);
+    return NextResponse.json({
+      error: `Error processing request: ${error instanceof Error ? error.message : 'Unknown error'}`
+    }, { status: 500 });
   }
-}
-
-export { handler as GET, handler as POST }; 
+} 
