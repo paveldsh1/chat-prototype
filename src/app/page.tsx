@@ -750,7 +750,7 @@ export default function Home() {
 
   // Место для отображения сообщений
   const renderMessages = () => {
-    if (loading) {
+    if (loading && messages.length === 0) {
       return (
         <div className="text-center p-4">
           <LoadingSpinner size="md" text="Загрузка сообщений..." />
@@ -1074,12 +1074,7 @@ export default function Home() {
                 disabled={loading || isSending || (!newMessage.trim() && !selectedFile)}
                 className="bg-blue-500 hover:bg-blue-600 text-white"
               >
-                {isSending ? (
-                  <span className="flex items-center">
-                    <LoadingSpinner size="sm" />
-                    <span className="ml-2">Отправка...</span>
-                  </span>
-                ) : 'Отправить'}
+                {isSending ? 'Отправка...' : 'Отправить'}
               </Button>
               <Button 
                 type="button"
