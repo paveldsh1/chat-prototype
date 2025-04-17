@@ -24,7 +24,6 @@ export async function GET(
   try {
     // Деструктурируем chatId из params
     const { chatId } = params;
-    console.log(`Получение сообщений для чата: ${chatId}`);
 
     // Получаем параметры запроса
     const url = new URL(request.url);
@@ -36,8 +35,6 @@ export async function GET(
     if (lastMessageId) {
       apiUrl += `&id=${lastMessageId}`;
     }
-    
-    console.log('Fetching messages from:', apiUrl);
     
     // Выполняем запрос к API OnlyFans
     const response = await fetch(
@@ -55,9 +52,6 @@ export async function GET(
       console.error(`API returned ${response.status}: ${errorText}`);
       
       // Если мы получаем ошибку от API, используем моковые данные для тестирования
-      console.log('Using mock data for testing due to API error');
-      
-      // Возвращаем моковые данные для тестирования, более новые сообщения идут первыми
       const mockMessages = generateMockMessages(chatId, 10, lastMessageId);
       
       // Сортируем моковые сообщения по дате - новые сначала
@@ -74,7 +68,6 @@ export async function GET(
     }
 
     const rawData = await response.json();
-    console.log('Raw API response:', JSON.stringify(rawData).substring(0, 200) + '...');
     
     if (!rawData.data || !rawData.data.list) {
       console.error('Invalid response structure:', rawData);
@@ -86,14 +79,6 @@ export async function GET(
     
     // Преобразуем ответ API в формат, ожидаемый клиентом
     const messages = fixedRawData.data.list.map((msg: any) => {
-      console.log('Processing message from API:', msg.id, 'Has media:', Boolean(msg.media?.length));
-      
-      // Если есть медиа, логируем для отладки
-      if (msg.media && msg.media.length > 0) {
-        console.log(`Message ${msg.id} media count: ${msg.media.length}`);
-        console.log(`Media sample:`, JSON.stringify(msg.media[0]).substring(0, 300));
-      }
-      
       // Безопасно преобразуем chatId в число для сравнения
       const chatIdNum = parseInt(chatId);
       

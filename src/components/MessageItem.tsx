@@ -261,29 +261,6 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
   const needsDateSeparator = showDateSeparator && 
     shouldShowDateSeparator(message.createdAt, previousMessageDate);
 
-  // Отладочное логирование
-  console.log(`Rendering MessageItem, has media: ${Boolean(message.media?.length)}`);
-  if (message.media && message.media.length > 0) {
-    console.log('Media items:', JSON.stringify(message.media, null, 2));
-    
-    // Дополнительно логируем данные первого медиа-элемента для детального анализа
-    if (message.media[0]) {
-      console.log('First media item files:', message.media[0].files);
-      console.log('First media type:', message.media[0].type);
-      console.log('First media canView:', message.media[0].canView);
-      console.log('First media URL used:', message.media[0].files?.full?.url || message.media[0].url || 'нет URL');
-      
-      // Добавляем дополнительную информацию о параметрах типа media_ids, медиафайлов и их структуре
-      console.log('Структура медиа массива:', message.media.map(m => ({
-        id: m.id,
-        type: m.type,
-        hasFiles: Boolean(m.files),
-        sources: m.videoSources ? Object.keys(m.videoSources) : 'нет',
-        alternativeUrls: m.alternatives?.length || 0
-      })));
-    }
-  }
-
   // Получаем наилучший доступный URL медиа-файла
   const getMediaUrl = (media: MediaItem) => {
     // Если явно указано, что медиа недоступно или есть ошибка
@@ -308,12 +285,8 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
             '';
     }
     
-    // Логируем URL для отладки
-    console.log(`Media URL for ${media.id}: ${url || 'нет URL'}`);
-    
     // Проверяем, что URL валидный
     if (!url || (typeof url === 'string' && !url.startsWith('http'))) {
-      console.warn(`Invalid media URL for ${media.id}: ${url}`);
       return null;
     }
     
@@ -340,15 +313,11 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
     originalUrl: string | null = null, 
     showPlaceholder: () => void
   ) => {
-    // Логируем ошибку загрузки
-    console.error('Failed to load media:', e, 'URL:', mediaUrl);
-    
     const target = e.currentTarget;
     const src = target.getAttribute('src');
     
     // Если нет URL, показываем плейсхолдер
     if (!src) {
-      console.warn('No source URL to retry with');
       showPlaceholder();
       return;
     }
@@ -356,7 +325,6 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
     // Экстрактим оригинальный URL из прокси URL, если это возможно
     const extractedOriginalUrl = extractOriginalUrl(src);
     if (extractedOriginalUrl) {
-      console.log('Extracted original URL:', extractedOriginalUrl);
       originalUrl = extractedOriginalUrl;
     }
     
@@ -399,8 +367,6 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
         allUrls.push(originalUrl);
       }
       
-      console.log('Alternative URLs to try:', allUrls);
-      
       // Если есть URL для повторной попытки, пробуем их по очереди
       if (allUrls.length > 0) {
         tryNextUrl(allUrls, 0, showPlaceholder);
@@ -412,23 +378,19 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
     
     const tryNextUrl = (urls: string[], index: number, showPlaceholder: () => void) => {
       if (index >= urls.length) {
-        console.warn('All alternative URLs failed, showing placeholder');
         showPlaceholder();
         return;
       }
       
       const url = urls[index];
-      console.log(`Trying alternative URL ${index + 1}/${urls.length}:`, url);
       
       // Создаем тестовое изображение для проверки URL
       const testImg = document.createElement('img');
       testImg.onload = () => {
-        console.log(`Alternative URL ${index + 1} loaded successfully:`, url);
         // Обновляем src у всех изображений и видео с этим URL
         document.querySelectorAll<HTMLImageElement | HTMLVideoElement>('img[data-retry="true"], video[data-retry="true"]')
           .forEach(el => {
             if (el.getAttribute('data-original-url') === url || !el.getAttribute('data-original-url')) {
-              console.log('Updating element with new URL:', url, el);
               el.setAttribute('src', url);
               el.removeAttribute('data-retry');
             }
@@ -436,7 +398,6 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
       };
       
       testImg.onerror = () => {
-        console.warn(`Alternative URL ${index + 1} failed to load:`, url);
         // Пробуем следующий URL
         tryNextUrl(urls, index + 1, showPlaceholder);
       };
@@ -448,18 +409,9 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
   const renderMediaItem = (media: MediaItem, index: number) => {
     // Проверка наличия медиа-элемента
     if (!media) {
-      console.warn('Попытка отрендерить пустой медиа-элемент');
       return null; // Не отображаем ничего вместо плейсхолдера
     }
     
-    // Расширенное логирование для медиа
-    console.log(`Рендеринг медиа ${index}:`, {
-      тип: media.type,
-      готово: media.isReady,
-      ошибка: media.hasError,
-      url: getMediaUrl(media)
-    });
-
     // Проверка на ошибки и состояние загрузки
     if (media.hasError) {
       return null; // Не отображаем медиа с ошибками
