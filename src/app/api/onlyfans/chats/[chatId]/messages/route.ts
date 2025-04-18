@@ -9,6 +9,7 @@ export async function GET(
   { params }: { params: { chatId: string } }
 ) {
   try {
+    debugger
     // Сохраняем chatId как строку и преобразуем в число только где необходимо
     const chatId = params.chatId;
     
