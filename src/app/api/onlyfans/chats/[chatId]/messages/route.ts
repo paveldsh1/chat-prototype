@@ -40,16 +40,13 @@ export async function GET(
       const errorText = await response.text();
       console.error(`API returned ${response.status}: ${errorText}`);
       
-      // Если мы получаем ошибку от API, используем моковые данные для тестирования
-      console.log('Using mock data for testing due to API error');
-      
-      // Возвращаем моковые данные для тестирования
+      // Возвращаем пустой массив сообщений при ошибке API
       return NextResponse.json({
-        messages: generateMockMessages(chatId, 10, lastMessageId),
+        messages: [],
         pagination: {
-          next_id: lastMessageId ? String(Number(lastMessageId) - 10) : String(Date.now() - 1000000)
+          next_id: null
         }
-      });
+      }, { status: response.status });
     }
 
     const rawData = await response.json();
@@ -113,16 +110,13 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching messages:', error);
     
-    // Получаем chatId из параметров
-    const chatId = params.chatId;
-    
-    // В случае любой ошибки возвращаем тестовые данные
+    // Возвращаем пустой массив сообщений при ошибке
     return NextResponse.json({
-      messages: generateMockMessages(chatId, 10),
+      messages: [],
       pagination: {
-        next_id: String(Date.now() - 1000000)
+        next_id: null
       }
-    });
+    }, { status: 500 });
   }
 }
 
@@ -249,26 +243,8 @@ export async function POST(
   
       if (!response.ok) {
         console.error('Error sending message:', data);
-        
-        // Возвращаем моковое сообщение в случае ошибки
-        return NextResponse.json({
-          data: {
-            id: Date.now(),
-            text: text,
-            createdAt: new Date().toISOString(),
-            fromUser: {
-              id: 486000283,
-              _view: "s"
-            },
-            isFree: true,
-            price: 0,
-            isNew: true,
-            media: file ? [{
-              type: file.type.includes('image') ? 'photo' : 'video',
-              src: URL.createObjectURL(file)
-            }] : []
-          }
-        });
+        // Возвращаем ошибку при проблеме с отправкой сообщения
+        return NextResponse.json({}, { status: response.status });
       }
   
       // Возвращаем ответ как есть, без преобразования
@@ -280,53 +256,9 @@ export async function POST(
   } catch (error) {
     console.error('Error sending message:', error);
     
-    // В случае любой ошибки возвращаем моковое сообщение
-    return NextResponse.json({
-      data: {
-        id: Date.now(),
-        text: "Ошибка при отправке сообщения",
-        createdAt: new Date().toISOString(),
-        fromUser: {
-          id: 486000283,
-          _view: "s"
-        },
-        isFree: true,
-        price: 0,
-        isNew: true,
-        media: []
-      }
-    });
+    // Возвращаем пустой объект при ошибке
+    return NextResponse.json({}, { status: 500 });
   }
-}
-
-// Функция для генерации моковых сообщений для тестирования
-function generateMockMessages(chatId: string, count: number, startIdStr?: string | null): any[] {
-  const startId = startIdStr ? Number(startIdStr) : Date.now();
-  const userId = 486000283; // ID пользователя
-  const chatIdNum = parseInt(chatId);
-  
-  return Array.from({ length: count }).map((_, index) => {
-    const id = startId - index - 1;
-    const isFromUser = index % 2 === 0;
-    
-    return {
-      id: id,
-      text: `Тестовое сообщение #${index + 1}`,
-      fromUser: {
-        id: isFromUser ? userId : chatIdNum,
-        name: isFromUser ? "Вы" : `Пользователь ${chatId}`,
-        username: isFromUser ? "you" : `user${chatId}`,
-        avatar: null
-      },
-      mediaType: null,
-      mediaUrl: null,
-      createdAt: new Date(Date.now() - index * 60000).toISOString(),
-      isFromUser: isFromUser,
-      price: 0,
-      isFree: true,
-      isOpened: true
-    };
-  });
 }
 
 // Функция для исправления URL с экранированными слешами
