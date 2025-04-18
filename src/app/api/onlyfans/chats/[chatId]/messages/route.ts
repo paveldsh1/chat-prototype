@@ -24,7 +24,6 @@ export async function GET(
       apiUrl += `&id=${lastMessageId}`;
     }
     
-    console.log('Fetching messages from:', apiUrl);
     
     // Выполняем запрос к API OnlyFans
     const response = await fetch(
@@ -51,7 +50,6 @@ export async function GET(
     }
 
     const rawData = await response.json();
-    console.log('Raw API response:', JSON.stringify(rawData).substring(0, 200) + '...');
     
     if (!rawData.data || !rawData.data.list) {
       console.error('Invalid response structure:', rawData);
@@ -63,13 +61,6 @@ export async function GET(
     
     // Преобразуем ответ API в формат, ожидаемый клиентом
     const messages = fixedRawData.data.list.map((msg: any) => {
-      console.log('Processing message from API:', msg.id, 'Has media:', Boolean(msg.media?.length));
-      
-      // Если есть медиа, логируем для отладки
-      if (msg.media && msg.media.length > 0) {
-        console.log(`Message ${msg.id} media count: ${msg.media.length}`);
-        console.log(`Media sample:`, JSON.stringify(msg.media[0]).substring(0, 300));
-      }
       
       // Безопасно преобразуем chatId в число
       const chatIdNum = parseInt(chatId);

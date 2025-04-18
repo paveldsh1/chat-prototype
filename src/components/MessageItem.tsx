@@ -274,20 +274,6 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
   const needsDateSeparator = showDateSeparator && 
     shouldShowDateSeparator(message.createdAt, previousMessageDate);
 
-  // Отладочное логирование
-  console.log(`Rendering MessageItem, has media: ${Boolean(message.media?.length)}`);
-  if (message.media && message.media.length > 0) {
-    console.log('Media items:', JSON.stringify(message.media, null, 2));
-    
-    // Дополнительно логируем данные первого медиа-элемента для детального анализа
-    if (message.media[0]) {
-      console.log('First media item files:', message.media[0].files);
-      console.log('First media type:', message.media[0].type);
-      console.log('First media canView:', message.media[0].canView);
-      console.log('First media URL used:', message.media[0].files?.full?.url || message.media[0].url || 'нет URL');
-    }
-  }
-
   // Получаем наилучший доступный URL медиа-файла
   const getMediaUrl = (media: MediaItem) => {
     // Если явно указано, что медиа недоступно или есть ошибка

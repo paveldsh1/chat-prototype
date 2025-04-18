@@ -8,6 +8,7 @@ async function handler(
   req: NextRequest,
   { params }: { params: { path: string[] } }
 ) {
+  debugger
   // Обработка авторизации модели
   if (params.path[0] === 'authenticate') {
     if (req.method === 'POST') {
@@ -22,6 +23,7 @@ async function handler(
           },
           body: JSON.stringify(body)
         });
+        debugger
 
         const data = await response.json();
         return NextResponse.json(data, { status: response.status });

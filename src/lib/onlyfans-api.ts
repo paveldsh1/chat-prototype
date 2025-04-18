@@ -173,21 +173,6 @@ function getUserDisplayName(fan: ChatResponse['fan']): string {
     return hardcodedNames[fan.id];
   }
   
-  // Логируем все возможные поля, содержащие имя пользователя
-  console.log('All name fields for user', fan.id, {
-    name: fan.name,
-    _view: fan._view,
-    username: fan.username,
-    nickname: fan.nickname,
-    displayName: fan.displayName,
-    firstName: fan.firstName,
-    lastName: fan.lastName,
-    fullName: fan.fullName,
-    allKeys: Object.keys(fan).filter(key => 
-      typeof fan[key] === 'string' && 
-      key.toLowerCase().includes('name')
-    )
-  });
   
   // Проверяем все возможные поля имени в порядке приоритета
   if (fan.name && fan.name.length > 1) return fan.name;
@@ -216,17 +201,12 @@ export async function getChats(): Promise<Chat[]> {
   const response = await fetch('/api/onlyfans/chats');
   const result = await handleApiResponse<ApiResponse<ChatResponse[]>>(response);
   
-  console.log('Raw API Response:', result);
-  console.log('Full API structure:', JSON.stringify(result, null, 2));
-  
   // Проверяем структуру ответа
   if (!result.data || !Array.isArray(result.data)) {
     console.error('Invalid response structure:', result);
     throw new Error('Invalid response format from chats API');
   }
-  
-  // Логируем данные пользователей, чтобы найти проблему
-  console.log('DETAILED USER DATA LOG:');
+
   result.data.forEach((chat, index) => {
     console.log(`User ${index + 1}:`, {
       id: chat.fan.id,
@@ -243,9 +223,6 @@ export async function getChats(): Promise<Chat[]> {
   return result.data.map((chat) => {
     // Используем усовершенствованную функцию получения имени пользователя
     const username = getUserDisplayName(chat.fan);
-    
-    // Логируем итоговое решение
-    console.log(`User ${chat.fan.id} final username:`, username);
     
     return {
       id: chat.fan.id,
@@ -289,8 +266,6 @@ export async function getChatMessages(
     
     const data = await response.json();
     
-    // Отладочное логирование
-    console.log('Raw messages response:', JSON.stringify(data).substring(0, 500) + '...');
     
     // Проверяем и трансформируем данные
     if (!data || !Array.isArray(data.messages)) {
@@ -300,16 +275,9 @@ export async function getChatMessages(
     
     // Проверяем и преобразуем сообщения
     const messages: Message[] = data.messages.map((msg: any) => {
-      // Отладочное логирование для проверки структуры медиафайлов
-      if (msg.media && msg.media.length > 0) {
-        console.log(`Message ${msg.id} has media:`, JSON.stringify(msg.media).substring(0, 200));
-      }
-      
       // Проверяем, является ли сообщение от текущего пользователя
       // В API данные приходят так, что isFromUser указывает, что сообщение именно от пользователя
       const isFromCurrentUser = msg.isFromUser === true;
-      
-      console.log(`Message ${msg.id} isFromUser: ${isFromCurrentUser}, original value:`, msg.isFromUser);
       
       return {
         id: parseInt(msg.id) || Date.now(),
@@ -345,13 +313,6 @@ export async function getChatMessages(
       hasMore: data.hasMore || !!data.next_id
     };
     
-    // Логируем пример обработанного сообщения
-    if (messages.length > 0) {
-      console.log('First processed message:', JSON.stringify(messages[0]).substring(0, 300));
-      if (messages[0].media && messages[0].media.length > 0) {
-        console.log('Media in first message:', messages[0].media);
-      }
-    }
     
     return {
       messages,

@@ -91,7 +91,6 @@ export default function Home() {
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
               );
               
-              console.log(`Loaded ${sortedMessages.length} messages for chat ${chat.id}`);
               
               // Сохраняем сообщения и информацию о пагинации
               newMessageCache[chat.id.toString()] = sortedMessages;
@@ -143,7 +142,6 @@ export default function Home() {
     
     // Форматируем ID чата
     const chatIdStr = selectedChat.toString();
-    console.log(`Loading messages for chat: ${chatIdStr}`);
     
     // Загружаем сообщения, если их еще нет в кэше
     const loadInitialMessages = async () => {
@@ -169,7 +167,6 @@ export default function Home() {
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
         
-        console.log(`Loaded ${sortedMessages.length} messages for chat ${chatIdStr}`);
         
         // Обновляем только если компонент все еще смонтирован
         if (isMounted) {
@@ -226,7 +223,6 @@ export default function Home() {
     if (!messageCache[chatIdStr] || messageCache[chatIdStr].length === 0) {
       loadInitialMessages();
     } else {
-      console.log(`Using cached messages for chat ${chatIdStr}, ${messageCache[chatIdStr].length} messages available`);
       setMessages(messageCache[chatIdStr]);
       
       // Прокручиваем к последнему сообщению даже если используем кэш
@@ -244,13 +240,11 @@ export default function Home() {
     const fetchNewMessages = async () => {
       if (!isMounted) return;
       
-      console.log("Запрос новых сообщений для чата:", chatIdStr);
       
       try {
         const response = await getChatMessages(chatIdStr);
         if (!isMounted) return;
         
-        console.log(`Получено ${response.messages.length} сообщений от API`);
         
         // Обновляем состояние только если компонент все еще смонтирован
         if (isMounted) {
@@ -264,7 +258,6 @@ export default function Home() {
           const newMessages = response.messages.filter(msg => !existingMessagesMap.has(msg.id));
           
           if (newMessages.length > 0) {
-            console.log(`Добавлено ${newMessages.length} новых сообщений`);
             
             // Обработка медиа
             const processedNewMessages = newMessages.map(msg => ({
@@ -341,7 +334,6 @@ export default function Home() {
     };
     
     // Настраиваем интервал для обновления сообщений каждую секунду
-    console.log("Настройка интервала обновления сообщений...");
     
     const updateMessagesWithDebounce = async () => {
       // Если запрос уже выполняется или компонент размонтирован, пропускаем
@@ -369,7 +361,6 @@ export default function Home() {
     
     // Очищаем интервал при размонтировании или смене чата
     return () => {
-      console.log("Очистка интервала обновления сообщений");
       isMounted = false;
       clearInterval(intervalId);
       // Сбрасываем флаг обновления
@@ -395,7 +386,6 @@ export default function Home() {
     try {
       const chatIdStr = selectedChat.toString();
       const nextId = paginationCache[chatIdStr]?.next_id;
-      console.log(`Loading earlier messages for chat ${chatIdStr}, next_id: ${nextId}`);
       
       const response = await getChatMessages(chatIdStr, nextId || undefined);
       
@@ -420,10 +410,8 @@ export default function Home() {
       // Фильтруем новые сообщения, которых еще нет в текущих
       const uniqueNewMessages = processedMessages.filter(msg => !existingMessagesMap.has(msg.id));
       
-      console.log(`Loaded ${processedMessages.length} earlier messages, ${uniqueNewMessages.length} are new`);
       
       if (uniqueNewMessages.length === 0) {
-        console.log('No new messages found, updating pagination info only');
         // Если нет новых сообщений, просто обновляем информацию о пагинации
         setPaginationCache(prev => ({
           ...prev,
@@ -503,7 +491,6 @@ export default function Home() {
     } catch (error) {
       if (!isComponentMounted) return;
       
-      console.error(`Failed to fetch earlier messages:`, error);
       setError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
       if (isComponentMounted) {
@@ -663,7 +650,6 @@ export default function Home() {
         };
       });
       setError(error instanceof Error ? error.message : 'Failed to send message');
-      console.error('Failed to send message:', error);
     }
 
     // Обработка отправки файла, если он выбран
