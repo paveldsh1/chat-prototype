@@ -298,12 +298,9 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
             '';
     }
     
-    // Логируем URL для отладки
-    console.log(`Media URL for ${media.id}: ${url || 'нет URL'}`);
     
     // Проверяем, что URL валидный
     if (!url || (typeof url === 'string' && !url.startsWith('http'))) {
-      console.warn(`Invalid media URL for ${media.id}: ${url}`);
       return null;
     }
     
