@@ -1,9 +1,6 @@
-import { Card } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import LoadingSpinner from "@/components/LoadingSpinner";
-import type { Chat, AccountInfo } from "@/lib/onlyfans-api";
+import React from 'react';
+import ChatList from './ChatList';
+import { Chat, AccountInfo } from "@/lib/onlyfans-api";
 
 interface ChatSidebarProps {
   account: AccountInfo | null;
@@ -15,7 +12,7 @@ interface ChatSidebarProps {
   paginationCache: Record<string, { next_id: string | null }>;
 }
 
-export default function ChatSidebar({
+const ChatSidebar: React.FC<ChatSidebarProps> = ({
   account,
   chats,
   loadingChats,
@@ -23,7 +20,7 @@ export default function ChatSidebar({
   onSelectChat,
   error,
   paginationCache
-}: ChatSidebarProps) {
+}: ChatSidebarProps) => {
   return (
     <div className="w-80 border-r">
       <div className="p-4 border-b">
@@ -66,65 +63,16 @@ export default function ChatSidebar({
         </div>
       </div>
 
-      <div className="p-4">
-        <h2 className="text-xl font-bold mb-4">Чаты</h2>
-        {error && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-        <ScrollArea className="h-[calc(100vh-16rem)]">
-          <div className="space-y-2">
-            {loadingChats ? (
-              <div className="text-center p-4">
-                <LoadingSpinner size="sm" text="Загрузка чатов..." />
-              </div>
-            ) : chats.length === 0 ? (
-              <div className="text-center p-4 text-gray-500">Нет доступных чатов</div>
-            ) : (
-              chats.map((chat) => (
-                <Card 
-                  key={chat.id}
-                  className={`p-4 cursor-pointer hover:bg-gray-100 ${
-                    selectedChat === chat.id ? 'bg-gray-100' : ''
-                  }`}
-                  onClick={() => onSelectChat(chat.id)}
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <AvatarImage src={`https://onlyfans.com/${chat.username}/avatar`} />
-                      <AvatarFallback>
-                        {chat.username && chat.username.length > 0 
-                          ? chat.username[0].toUpperCase() 
-                          : '?'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="font-medium">
-                        {/* Отображаем имя пользователя или ID пользователя, если имя отсутствует */}
-                        {chat.username && chat.username.trim().length > 0 
-                          ? chat.username 
-                          : `User #${chat.id}`}
-                        
-                        {/* Если имя не соответствует ожидаемому формату, покажем это */}
-                        {chat.username === 'm' && (
-                          <span className="ml-2 text-xs text-red-500">(Неполное имя)</span>
-                        )}
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        ID: {chat.id}
-                      </div>
-                      {chat.lastMessage && (
-                        <div className="text-sm text-gray-500 truncate">{chat.lastMessage}</div>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              ))
-            )}
-          </div>
-        </ScrollArea>
-      </div>
+      {/* Список чатов */}
+      <ChatList 
+        chats={chats}
+        loadingChats={loadingChats}
+        selectedChat={selectedChat}
+        onSelectChat={onSelectChat}
+        error={error}
+      />
     </div>
   );
-} 
+};
+
+export default ChatSidebar; 
