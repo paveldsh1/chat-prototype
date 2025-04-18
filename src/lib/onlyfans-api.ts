@@ -411,39 +411,3 @@ export async function sendMessage(chatId: string, text: string, options?: { pric
       : new Error('Failed to send message');
   }
 }
-
-export async function authenticateModel(auth: ModelAuth): Promise<AuthResponse> {
-  try {
-    const response = await fetch('/api/onlyfans/authenticate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify(auth)
-    });
-    return handleApiResponse<AuthResponse>(response);
-  } catch (error) {
-    console.error('Model Auth Error:', error);
-    throw error instanceof Error 
-      ? error 
-      : new Error('Failed to authenticate model. Please check credentials.');
-  }
-}
-
-export async function pollAuthStatus(attemptId: string): Promise<AccountInfo> {
-  try {
-    const response = await fetch(`/api/onlyfans/authenticate/${attemptId}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
-    return handleApiResponse<AccountInfo>(response);
-  } catch (error) {
-    console.error('Auth Status Error:', error);
-    throw error instanceof Error 
-      ? error 
-      : new Error('Failed to check authentication status.');
-  }
-} 
