@@ -34,6 +34,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isSending, setIsSending] = useState<boolean>(false);
   const isUpdatingRef = useRef<boolean>(false);
+  const [mediaPrice, setMediaPrice] = useState<string>("");
 
   // Проверка авторизации и загрузка данных
   useEffect(() => {
@@ -538,6 +539,7 @@ export default function Home() {
   const clearSelectedFile = () => {
     setSelectedFile(null);
     setPreviewUrl(null);
+    setMediaPrice("");
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -640,6 +642,10 @@ export default function Home() {
     if (selectedFile) {
       console.log('Sending message with file:', selectedFile.name);
       
+      // Получаем цену медиа
+      const price = mediaPrice ? parseFloat(mediaPrice) : 0;
+      const isFree = price <= 0;
+      
       // Создаем оптимистичное сообщение для файла
       const fileOptimisticMessage: Message = {
         id: Date.now() + 1, // Другой ID для отличия от текстового сообщения
@@ -651,8 +657,8 @@ export default function Home() {
           type: selectedFile?.type.startsWith('image/') ? 'photo' : 'video',
           url: previewUrl || ''
         }],
-        isFree: true,
-        price: 0,
+        isFree: isFree,
+        price: price,
         isNew: true
       };
       
@@ -669,6 +675,10 @@ export default function Home() {
       // Отправляем формдату с файлом
       const formData = new FormData();
       formData.append('file', selectedFile);
+      // Добавляем цену, если она установлена
+      if (mediaPrice) {
+        formData.append('price', mediaPrice);
+      }
       
       try {
         const response = await fetch(`/api/onlyfans/chats/${chatIdStr}/messages`, {
@@ -720,6 +730,7 @@ export default function Home() {
     // Сбрасываем состояние UI
     setSelectedFile(null);
     setPreviewUrl(null);
+    setMediaPrice("");
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -1036,6 +1047,19 @@ export default function Home() {
                     <p className="text-xs text-gray-500">
                       {(selectedFile.size / 1024).toFixed(1)} КБ
                     </p>
+                    <div className="mt-2 flex items-center">
+                      <label className="text-xs text-gray-700 mr-2">Цена:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        className="text-xs p-1 w-16 border border-gray-300 rounded"
+                        value={mediaPrice}
+                        onChange={(e) => setMediaPrice(e.target.value)}
+                        placeholder="0"
+                      />
+                      <span className="text-xs text-gray-500 ml-1">$</span>
+                    </div>
                   </div>
                 </div>
                 <button

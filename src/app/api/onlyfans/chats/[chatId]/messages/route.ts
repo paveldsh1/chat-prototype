@@ -136,6 +136,8 @@ export async function POST(
     let text = '';
     let file: File | null = null;
     let mediaFiles = "[]";
+    let price: number | undefined = undefined;
+    let isFree: boolean | undefined = undefined;
 
     // Обработка multipart/form-data (для файлов)
     if (contentType.includes('multipart/form-data')) {
@@ -148,13 +150,22 @@ export async function POST(
         text = formData.get('text') as string || '';
         file = formData.get('file') as File | null;
         
+        // Получаем цену из формы
+        const priceStr = formData.get('price') as string | null;
+        if (priceStr !== null && priceStr !== '') {
+          price = parseFloat(priceStr);
+          isFree = price <= 0;
+        }
+        
         console.log('FormData content:', {
           text: text,
           file: file ? {
             name: file.name,
             type: file.type,
             size: file.size
-          } : null
+          } : null,
+          price: price,
+          isFree: isFree
         });
       } catch (formError) {
         console.error('Error parsing FormData:', formError);
@@ -211,6 +222,15 @@ export async function POST(
       console.log('Processing JSON request');
       const jsonData = await request.json();
       text = jsonData.text || '';
+      
+      // Получаем цену из JSON
+      if (jsonData.price !== undefined) {
+        price = parseFloat(jsonData.price);
+      }
+      
+      if (jsonData.isFree !== undefined) {
+        isFree = Boolean(jsonData.isFree);
+      }
     }
 
     // Формируем данные для отправки сообщения
@@ -219,8 +239,18 @@ export async function POST(
     // Если есть медиафайлы, добавляем их в запрос
     if (mediaFiles !== "[]") {
       messageData.mediaFiles = mediaFiles;
-      // Для платного контента нужно установить цену
-      messageData.price = 0; // Бесплатный контент
+    }
+    
+    // Управление ценой и флагом бесплатности
+    if (price !== undefined) {
+      messageData.price = price;
+    }
+    
+    if (isFree !== undefined) {
+      messageData.isFree = isFree;
+    } else if (price !== undefined) {
+      // Если цена установлена, но isFree не указан, вычисляем его из цены
+      messageData.isFree = price <= 0;
     }
 
     console.log('Sending message with data:', messageData);

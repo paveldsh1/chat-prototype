@@ -363,14 +363,27 @@ export async function getChatMessages(
   }
 }
 
-export async function sendMessage(chatId: string, text: string): Promise<Message> {
+export async function sendMessage(chatId: string, text: string, options?: { price?: number, isFree?: boolean }): Promise<Message> {
   try {
+    const body: any = { text };
+    
+    // Добавляем опции цены и платности, если они предоставлены
+    if (options) {
+      if (options.price !== undefined) {
+        body.price = options.price;
+      }
+      
+      if (options.isFree !== undefined) {
+        body.isFree = options.isFree;
+      }
+    }
+    
     const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ text })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {

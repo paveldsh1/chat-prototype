@@ -1,5 +1,5 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ReactElement } from 'react';
+import { ReactElement, useState } from 'react';
 import Image from 'next/image';
 import { CSSProperties } from 'react';
 
@@ -257,6 +257,19 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
     minute: '2-digit' 
   });
 
+  // Добавляем состояние для отображения плейсхолдера при ошибке загрузки медиа
+  const [mediaLoadError, setMediaLoadError] = useState<Record<string, boolean>>({});
+
+  // Функция для отображения плейсхолдера ошибки
+  const showErrorPlaceholder = (mediaId?: string | number) => {
+    if (mediaId) {
+      setMediaLoadError(prev => ({
+        ...prev,
+        [mediaId.toString()]: true
+      }));
+    }
+  };
+
   // Проверяем, нужно ли показать разделитель даты
   const needsDateSeparator = showDateSeparator && 
     shouldShowDateSeparator(message.createdAt, previousMessageDate);
@@ -440,75 +453,86 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
     // Проверка наличия медиа-элемента
     if (!media) {
       console.warn('Попытка отрендерить пустой медиа-элемент');
-      return null; // Не отображаем ничего вместо плейсхолдера
+      return null; // Не отображаем ничего
     }
     
-    // Расширенное логирование для медиа
-    console.log(`Рендеринг медиа ${index}:`, {
-      тип: media.type,
-      готово: media.isReady,
-      ошибка: media.hasError,
-      url: getMediaUrl(media)
-    });
-
+    // Если у медиа есть ошибка загрузки, пропускаем его и возвращаем null
+    const mediaId = media.id.toString();
+    if (mediaLoadError[mediaId]) {
+      return null;
+    }
+    
     // Проверка на ошибки и состояние загрузки
     if (media.hasError) {
       return null; // Не отображаем медиа с ошибками
     }
     
     if (media.isReady === false) {
-      return <MediaPlaceholder loading message="Медиа загружается..." />; // Оставляем загрузку
+      return null; // Не показываем загрузку
     }
     
     const mediaUrl = getMediaUrl(media);
     
-    // Проверяем наличие URL
+    // Если нет URL, просто пропускаем медиа
     if (!mediaUrl) {
-      return null; // Не отображаем медиа с недоступными URL
+      return null;
     }
 
-    // Рендерим в зависимости от типа медиа
+    // Получаем альтернативные URL для случая ошибки
+    const alternatives = media.alternatives || [];
+    const originalUrl = media.originalUrl || null;
+
+    // Код для отображения медиа-контента
     if (media.type === 'photo') {
       return (
-        <div style={photoWrapperStyle}>
+        <div className="relative" style={photoWrapperStyle} key={`media-${media.id}-${index}`}>
+          {/* Показываем индикатор цены для платного контента */}
+          {!message.isFree && message.price > 0 && (
+            <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">
+              {message.price}$
+            </div>
+          )}
+          
+          {/* Содержимое медиа */}
           <img
             src={mediaUrl}
-            alt="Изображение из сообщения"
+            alt="Изображение"
             style={imageStyle}
-            loading="lazy"
-            onClick={() => media.canView !== false && openMediaViewer({ medias: message.media || [], startIndex: index })}
+            onClick={() => openMediaViewer({ medias: message.media || [], startIndex: index })}
             onError={(e) => {
-              // Если изображение не загрузилось, полностью скрываем его
-              const parentDiv = (e.target as HTMLImageElement).closest('div[style]') as HTMLDivElement;
-              if (parentDiv) {
-                parentDiv.style.display = 'none';
-              }
+              // При ошибке загрузки скрываем элемент родителя
+              const parent = (e.target as HTMLElement).parentElement;
+              if (parent) parent.style.display = 'none';
             }}
           />
         </div>
       );
     } else if (media.type === 'video') {
       return (
-        <div style={videoWrapperStyle}>
+        <div className="relative" style={videoWrapperStyle} key={`media-${media.id}-${index}`}>
+          {/* Показываем индикатор цены для платного контента */}
+          {!message.isFree && message.price > 0 && (
+            <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">
+              {message.price}$
+            </div>
+          )}
+          
+          {/* Код для отображения видео */}
           <video
-            src={mediaUrl}
             controls
+            src={mediaUrl}
             style={videoStyle}
-            playsInline
-            poster={getThumbFileUrl(media)}
             onError={(e) => {
-              // Если видео не загрузилось, полностью скрываем его
-              const parentDiv = (e.target as HTMLVideoElement).closest('div[style]') as HTMLDivElement;
-              if (parentDiv) {
-                parentDiv.style.display = 'none';
-              }
+              // При ошибке загрузки скрываем элемент родителя
+              const parent = (e.target as HTMLElement).parentElement;
+              if (parent) parent.style.display = 'none';
             }}
-          />
+          ></video>
         </div>
       );
     }
-
-    // Для неподдерживаемых типов ничего не отображаем
+    
+    // Неизвестные типы не отображаем
     return null;
   };
 
@@ -521,6 +545,12 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
     // но так как у нас нет доступа к хранилищу UI, просто логируем
     console.log('Медиа для просмотра:', medias);
   };
+  
+  // Определяем, показывать ли цену для этого сообщения
+  const showPrice = message.mediaUrl && !message.isFree && message.price > 0;
+  
+  // Проверяем наличие медиа в сообщении для отображения
+  const hasMedia = message.media && message.media.length > 0 || message.mediaUrl;
   
   // Рендерим сообщение с возможным разделителем даты
   return (
@@ -561,6 +591,48 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
               </div>
             ) : null;
           })()}
+          
+          {message.mediaUrl && (
+            <div className="relative mt-2 rounded-lg overflow-hidden bg-gray-100">
+              {/* Показываем индикатор цены для платного контента */}
+              {showPrice && (
+                <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">
+                  {message.price}$
+                </div>
+              )}
+              
+              {/* Отображаем медиа если оно есть */}
+              {message.mediaType === 'photo' && message.mediaUrl && (
+                <img 
+                  src={message.mediaUrl} 
+                  alt="Изображение" 
+                  className="max-w-full max-h-80 rounded-lg"
+                  onClick={() => message.media && message.media.length > 0 && openMediaViewer({ 
+                    medias: message.media, 
+                    startIndex: 0 
+                  })}
+                  onError={(e) => {
+                    // При ошибке загрузки скрываем элемент родителя
+                    const parent = (e.target as HTMLElement).parentElement;
+                    if (parent) parent.style.display = 'none';
+                  }}
+                />
+              )}
+              
+              {message.mediaType === 'video' && message.mediaUrl && (
+                <video 
+                  controls 
+                  className="max-w-full max-h-80 rounded-lg"
+                  src={message.mediaUrl}
+                  onError={(e) => {
+                    // При ошибке загрузки скрываем элемент родителя
+                    const parent = (e.target as HTMLElement).parentElement;
+                    if (parent) parent.style.display = 'none';
+                  }}
+                ></video>
+              )}
+            </div>
+          )}
           
           <div className={`text-xs mt-1 ${message.isFromUser ? 'text-blue-100' : 'text-gray-500'}`}>
             {formattedTime}
