@@ -713,6 +713,7 @@ export default function Home() {
           method: 'POST',
           body: formData
         });
+        debugger
         
         if (!response.ok) {
           throw new Error('Ошибка при отправке файла');

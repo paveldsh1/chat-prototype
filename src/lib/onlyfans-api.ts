@@ -385,6 +385,7 @@ export async function sendMessage(chatId: string, text: string, options?: { pric
       },
       body: JSON.stringify(body)
     });
+    debugger
 
     if (!response.ok) {
       throw new Error(`Failed to send message: ${response.status}`);
