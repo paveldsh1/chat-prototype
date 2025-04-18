@@ -257,11 +257,11 @@ export default function Home() {
           // Получаем актуальные сообщения из состояния и кэша
           const currentMessages = messageCache[chatIdStr] || [];
           
-          // Преобразуем массив текущих сообщений в Set для быстрого поиска
-          const existingIds = new Set(currentMessages.map(msg => msg.id));
+          // Преобразуем массив текущих сообщений в Map для более эффективной проверки
+          const existingMessagesMap = new Map(currentMessages.map(msg => [msg.id, msg]));
           
           // Фильтруем новые сообщения, которых еще нет в текущем массиве сообщений
-          const newMessages = response.messages.filter(msg => !existingIds.has(msg.id));
+          const newMessages = response.messages.filter(msg => !existingMessagesMap.has(msg.id));
           
           if (newMessages.length > 0) {
             console.log(`Добавлено ${newMessages.length} новых сообщений`);
@@ -275,35 +275,37 @@ export default function Home() {
               })) || []
             }));
             
-            // Обновляем состояние сообщений, используя функциональное обновление
+            // Обновляем состояние сообщений, используя функциональное обновление и Map для дедупликации
             setMessages(prevMessages => {
-              // Объединяем существующие и новые сообщения
-              const allMessages = [...prevMessages, ...processedNewMessages];
+              // Создаем Map из текущих сообщений для быстрого доступа
+              const messagesMap = new Map(prevMessages.map(msg => [msg.id, msg]));
               
-              // Удаляем дубликаты по ID
-              const uniqueMessages = Array.from(
-                new Map(allMessages.map(msg => [msg.id, msg])).values()
-              );
+              // Добавляем новые сообщения в Map (автоматически перезаписывая дубликаты)
+              processedNewMessages.forEach(msg => {
+                messagesMap.set(msg.id, msg);
+              });
               
-              // Сортируем сообщения по времени
+              // Преобразуем Map обратно в массив и сортируем
+              const uniqueMessages = Array.from(messagesMap.values());
               return uniqueMessages.sort((a, b) => 
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
               );
             });
             
-            // Обновляем кэш сообщений
+            // Обновляем кэш сообщений тем же способом с использованием Map
             setMessageCache(prev => {
               const cachedMessages = prev[chatIdStr] || [];
               
-              // Объединяем кэшированные и новые сообщения
-              const allMessages = [...cachedMessages, ...processedNewMessages];
+              // Создаем Map из кэшированных сообщений
+              const messagesMap = new Map(cachedMessages.map(msg => [msg.id, msg]));
               
-              // Удаляем дубликаты по ID
-              const uniqueMessages = Array.from(
-                new Map(allMessages.map(msg => [msg.id, msg])).values()
-              );
+              // Добавляем новые сообщения в Map
+              processedNewMessages.forEach(msg => {
+                messagesMap.set(msg.id, msg);
+              });
               
-              // Сортируем по времени
+              // Преобразуем Map обратно в массив и сортируем
+              const uniqueMessages = Array.from(messagesMap.values());
               const sortedMessages = uniqueMessages.sort((a, b) => 
                 new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
               );
@@ -316,7 +318,7 @@ export default function Home() {
             
             // Прокручиваем чат вниз при новых сообщениях
             setTimeout(() => {
-              if (messagesContainerRef.current) {
+              if (messagesContainerRef.current && messagesContainerRef.current.scrollHeight) {
                 messagesContainerRef.current.scrollTo({
                   top: messagesContainerRef.current.scrollHeight,
                   behavior: 'smooth'
@@ -354,7 +356,9 @@ export default function Home() {
         await fetchNewMessages();
       } finally {
         // Обязательно сбрасываем флаг, даже если произошла ошибка
-        isUpdatingRef.current = false;
+        if (isMounted) {
+          isUpdatingRef.current = false;
+        }
       }
     };
     
@@ -407,21 +411,16 @@ export default function Home() {
         })) || []
       }));
       
-      // Сортируем полученные сообщения
-      const sortedNewMessages = [...processedMessages].sort((a, b) => 
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      );
-      
       // Получаем актуальные данные из состояния
       const currentMessages = messageCache[chatIdStr] || [];
       
-      // Получаем текущие ID сообщений для предотвращения дублирования
-      const existingIds = new Set(currentMessages.map(m => m.id));
+      // Создаем Map из текущих сообщений для более эффективной проверки дубликатов
+      const existingMessagesMap = new Map(currentMessages.map(m => [m.id, m]));
       
-      // Фильтруем новые сообщения, которых еще нет
-      const uniqueNewMessages = sortedNewMessages.filter(msg => !existingIds.has(msg.id));
+      // Фильтруем новые сообщения, которых еще нет в текущих
+      const uniqueNewMessages = processedMessages.filter(msg => !existingMessagesMap.has(msg.id));
       
-      console.log(`Loaded ${sortedNewMessages.length} earlier messages, ${uniqueNewMessages.length} are new`);
+      console.log(`Loaded ${processedMessages.length} earlier messages, ${uniqueNewMessages.length} are new`);
       
       if (uniqueNewMessages.length === 0) {
         console.log('No new messages found, updating pagination info only');
@@ -445,35 +444,37 @@ export default function Home() {
         scrollPositionRef.current = messagesContainerRef.current.scrollHeight - messagesContainerRef.current.scrollTop;
       }
       
-      // Обновляем сообщения, используя функциональное обновление
+      // Обновляем сообщения, используя Map для дедупликации
       setMessages(prevMessages => {
-        // Объединяем новые и существующие сообщения
-        const allMessages = [...uniqueNewMessages, ...prevMessages];
+        // Создаем Map из текущих сообщений
+        const messagesMap = new Map(prevMessages.map(msg => [msg.id, msg]));
         
-        // Удаляем дубликаты по ID
-        const uniqueMessages = Array.from(
-          new Map(allMessages.map(msg => [msg.id, msg])).values()
-        );
+        // Добавляем новые сообщения в Map (автоматически перезаписывая дубликаты)
+        uniqueNewMessages.forEach(msg => {
+          messagesMap.set(msg.id, msg);
+        });
         
-        // Сортируем сообщения по времени
+        // Преобразуем Map обратно в массив и сортируем
+        const uniqueMessages = Array.from(messagesMap.values());
         return uniqueMessages.sort((a, b) => 
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
       });
       
-      // Обновляем кэш сообщений
+      // Обновляем кэш сообщений тем же способом
       setMessageCache(prev => {
         const chatMessages = prev[chatIdStr] || [];
         
-        // Объединяем все сообщения
-        const allMessages = [...uniqueNewMessages, ...chatMessages];
+        // Создаем Map из кэшированных сообщений
+        const messagesMap = new Map(chatMessages.map(msg => [msg.id, msg]));
         
-        // Удаляем дубликаты по ID
-        const uniqueMessages = Array.from(
-          new Map(allMessages.map(msg => [msg.id, msg])).values()
-        );
+        // Добавляем новые сообщения в Map
+        uniqueNewMessages.forEach(msg => {
+          messagesMap.set(msg.id, msg);
+        });
         
-        // Сортируем по времени
+        // Преобразуем Map обратно в массив и сортируем
+        const uniqueMessages = Array.from(messagesMap.values());
         const sortedMessages = uniqueMessages.sort((a, b) => 
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
@@ -553,9 +554,11 @@ export default function Home() {
     // Временно отключаем автоматическое обновление сообщений
     isUpdatingRef.current = true;
 
-    // Создаем оптимистичное сообщение
+    // Создаем оптимистичное сообщение с уникальным временным ID
+    const tempId = Date.now(); // Используем числовой ID, как ожидает тип Message
+    
     const optimisticMessage: Message = {
-      id: Date.now(), // Временный ID
+      id: tempId, // Временный ID, который точно не будет дублировать реальные ID сообщений
       text: newMessage,
       timestamp: new Date().toISOString(),
       fromUser: true,
@@ -609,29 +612,54 @@ export default function Home() {
         })) || []
       };
       
-      // Заменяем оптимистичное сообщение реальным
-      setMessages(prev => 
-        prev.map(msg => msg.id === optimisticMessage.id ? processedMessage : msg)
-      );
+      // Заменяем оптимистичное сообщение реальным в UI
+      setMessages(prev => {
+        // Создаем Map из текущих сообщений для дедупликации
+        const messagesMap = new Map(prev.map(msg => [msg.id, msg]));
+        
+        // Удаляем оптимистичное сообщение
+        messagesMap.delete(tempId);
+        
+        // Добавляем реальное сообщение
+        messagesMap.set(processedMessage.id, processedMessage);
+        
+        // Преобразуем Map обратно в массив и сортируем
+        const uniqueMessages = Array.from(messagesMap.values());
+        return uniqueMessages.sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+      });
       
       // Обновляем кэш сообщений
       setMessageCache(prev => {
         const chatMessages = prev[chatIdStr] || [];
+        
+        // Создаем Map из кэшированных сообщений
+        const messagesMap = new Map(chatMessages.map(msg => [msg.id, msg]));
+        
+        // Удаляем оптимистичное сообщение и добавляем реальное
+        messagesMap.delete(tempId);
+        messagesMap.set(processedMessage.id, processedMessage);
+        
+        // Преобразуем Map обратно в массив и сортируем
+        const uniqueMessages = Array.from(messagesMap.values());
+        const sortedMessages = uniqueMessages.sort((a, b) => 
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        
         return {
           ...prev,
-          [chatIdStr]: chatMessages.map(msg => 
-            msg.id === optimisticMessage.id ? processedMessage : msg
-          )
+          [chatIdStr]: sortedMessages
         };
       });
     } catch (error) {
       // В случае ошибки удаляем оптимистичное сообщение
-      setMessages(prev => prev.filter(msg => msg.id !== optimisticMessage.id));
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
       setMessageCache(prev => {
         const chatMessages = prev[chatIdStr] || [];
         return {
           ...prev,
-          [chatIdStr]: chatMessages.filter(msg => msg.id !== optimisticMessage.id)
+          [chatIdStr]: chatMessages.filter(msg => msg.id !== tempId)
         };
       });
       setError(error instanceof Error ? error.message : 'Failed to send message');
@@ -815,7 +843,7 @@ export default function Home() {
               {/* Сообщения за текущий день */}
               {dayMessages.map((message, index) => {
                 // Генерируем уникальный ключ, добавляя индекс
-                const uniqueKey = `${message.id}-${index}`;
+                const uniqueKey = `${message.id}-${date}-${index}`;
                 
                 // Подготавливаем медиа-данные
                 const mediaData = message.media && message.media.length > 0

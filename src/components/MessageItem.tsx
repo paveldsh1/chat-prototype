@@ -485,7 +485,7 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
     // Код для отображения медиа-контента
     if (media.type === 'photo') {
       return (
-        <div className="relative" style={photoWrapperStyle} key={`media-${media.id}-${index}`}>
+        <div className="relative" style={photoWrapperStyle}>
           {/* Показываем индикатор цены для платного контента */}
           {!message.isFree && message.price > 0 && (
             <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">
@@ -509,7 +509,7 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
       );
     } else if (media.type === 'video') {
       return (
-        <div className="relative" style={videoWrapperStyle} key={`media-${media.id}-${index}`}>
+        <div className="relative" style={videoWrapperStyle}>
           {/* Показываем индикатор цены для платного контента */}
           {!message.isFree && message.price > 0 && (
             <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">
@@ -546,11 +546,8 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
     console.log('Медиа для просмотра:', medias);
   };
   
-  // Определяем, показывать ли цену для этого сообщения
-  const showPrice = message.mediaUrl && !message.isFree && message.price > 0;
-  
   // Проверяем наличие медиа в сообщении для отображения
-  const hasMedia = message.media && message.media.length > 0 || message.mediaUrl;
+  const hasMedia = message.media && message.media.length > 0;
   
   // Рендерим сообщение с возможным разделителем даты
   return (
@@ -591,48 +588,6 @@ export default function MessageItem({ message, previousMessageDate, showDateSepa
               </div>
             ) : null;
           })()}
-          
-          {message.mediaUrl && (
-            <div className="relative mt-2 rounded-lg overflow-hidden bg-gray-100">
-              {/* Показываем индикатор цены для платного контента */}
-              {showPrice && (
-                <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs font-semibold px-2 py-1 rounded-full z-10">
-                  {message.price}$
-                </div>
-              )}
-              
-              {/* Отображаем медиа если оно есть */}
-              {message.mediaType === 'photo' && message.mediaUrl && (
-                <img 
-                  src={message.mediaUrl} 
-                  alt="Изображение" 
-                  className="max-w-full max-h-80 rounded-lg"
-                  onClick={() => message.media && message.media.length > 0 && openMediaViewer({ 
-                    medias: message.media, 
-                    startIndex: 0 
-                  })}
-                  onError={(e) => {
-                    // При ошибке загрузки скрываем элемент родителя
-                    const parent = (e.target as HTMLElement).parentElement;
-                    if (parent) parent.style.display = 'none';
-                  }}
-                />
-              )}
-              
-              {message.mediaType === 'video' && message.mediaUrl && (
-                <video 
-                  controls 
-                  className="max-w-full max-h-80 rounded-lg"
-                  src={message.mediaUrl}
-                  onError={(e) => {
-                    // При ошибке загрузки скрываем элемент родителя
-                    const parent = (e.target as HTMLElement).parentElement;
-                    if (parent) parent.style.display = 'none';
-                  }}
-                ></video>
-              )}
-            </div>
-          )}
           
           <div className={`text-xs mt-1 ${message.isFromUser ? 'text-blue-100' : 'text-gray-500'}`}>
             {formattedTime}
