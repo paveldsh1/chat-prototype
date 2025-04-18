@@ -125,169 +125,39 @@ export async function POST(
   { params }: { params: { chatId: string } }
 ) {
   try {
+    console.log('POST запрос к API сообщений');
     // Сохраняем chatId как строку
     const chatId = params.chatId;
-    console.log('Sending message to chat:', chatId);
     
-    // Проверяем тип содержимого запроса
-    const contentType = request.headers.get('content-type') || '';
-    console.log('Content-Type:', contentType);
+    // Обрабатываем только JSON-запросы для текстовых сообщений
+    const jsonData = await request.json();
+    const text = jsonData.text || '';
     
-    let text = '';
-    let file: File | null = null;
-    let mediaFiles = "[]";
-    let price: number | undefined = undefined;
-    let isFree: boolean | undefined = undefined;
-
-    // Обработка multipart/form-data (для файлов)
-    if (contentType.includes('multipart/form-data')) {
-      console.log('Processing multipart/form-data request');
-      
-      try {
-        const formData = await request.formData();
-        console.log('FormData keys:', [...formData.keys()]);
-        
-        text = formData.get('text') as string || '';
-        file = formData.get('file') as File | null;
-        
-        // Получаем цену из формы
-        const priceStr = formData.get('price') as string | null;
-        if (priceStr !== null && priceStr !== '') {
-          price = parseFloat(priceStr);
-          isFree = price <= 0;
-        }
-        
-        console.log('FormData content:', {
-          text: text,
-          file: file ? {
-            name: file.name,
-            type: file.type,
-            size: file.size
-          } : null,
-          price: price,
-          isFree: isFree
-        });
-      } catch (formError) {
-        console.error('Error parsing FormData:', formError);
-        throw new Error(`Ошибка обработки формы: ${formError}`);
-      }
-      
-      // Если файл присутствует, загружаем его на OnlyFans
-      if (file) {
-        console.log('Uploading file:', file.name, file.type, file.size);
-        
-        // Формируем FormData для загрузки файла
-        const fileFormData = new FormData();
-        fileFormData.append('file', file);
-        
-        // Отправляем файл на сервер OnlyFans для загрузки
-        console.log('Sending upload request to OnlyFans API');
-        
-        try {
-          const uploadResponse = await fetch(
-            `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/medias`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${API_KEY}`,
-              },
-              body: fileFormData
-            }
-          );
-          
-          if (!uploadResponse.ok) {
-            const errorText = await uploadResponse.text();
-            console.error(`File upload failed: ${uploadResponse.status}`, errorText);
-            throw new Error(`Ошибка загрузки файла: ${uploadResponse.status} - ${errorText}`);
-          }
-          
-          const uploadData = await uploadResponse.json();
-          console.log('File upload response:', JSON.stringify(uploadData, null, 2));
-          
-          // Получаем ID загруженного файла
-          if (uploadData.data && uploadData.data.id) {
-            // Формируем JSON строку с ID загруженного файла для API
-            mediaFiles = JSON.stringify([uploadData.data.id]);
-            console.log('Media files ID for message:', mediaFiles);
-          } else {
-            console.error('Upload response does not contain media ID', uploadData);
-          }
-        } catch (uploadError) {
-          console.error('Error during file upload:', uploadError);
-          throw new Error(`Ошибка при загрузке файла: ${uploadError}`);
-        }
-      }
-    } else {
-      // Обработка application/json
-      console.log('Processing JSON request');
-      const jsonData = await request.json();
-      text = jsonData.text || '';
-      
-      // Получаем цену из JSON
-      if (jsonData.price !== undefined) {
-        price = parseFloat(jsonData.price);
-      }
-      
-      if (jsonData.isFree !== undefined) {
-        isFree = Boolean(jsonData.isFree);
-      }
-    }
-
-    // Формируем данные для отправки сообщения
-    const messageData: any = { text };
-    
-    // Если есть медиафайлы, добавляем их в запрос
-    if (mediaFiles !== "[]") {
-      messageData.mediaFiles = mediaFiles;
-    }
-    
-    // Управление ценой и флагом бесплатности
-    if (price !== undefined) {
-      messageData.price = price;
-    }
-    
-    if (isFree !== undefined) {
-      messageData.isFree = isFree;
-    } else if (price !== undefined) {
-      // Если цена установлена, но isFree не указан, вычисляем его из цены
-      messageData.isFree = price <= 0;
-    }
-
-    console.log('Sending message with data:', messageData);
-
     // Отправляем сообщение через API OnlyFans
-    try {
-      const response = await fetch(
-        `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/chats/${chatId}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(messageData)
-        }
-      );
-  
-      const data = await response.json();
-  
-      if (!response.ok) {
-        console.error('Error sending message:', data);
-        // Возвращаем ошибку при проблеме с отправкой сообщения
-        return NextResponse.json({}, { status: response.status });
+    const response = await fetch(
+      `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/chats/${chatId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ text })
       }
-  
-      // Возвращаем ответ как есть, без преобразования
-      return NextResponse.json(data);
-    } catch (sendError) {
-      console.error('Error sending message to API:', sendError);
-      throw new Error(`Ошибка при отправке сообщения в API: ${sendError}`);
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Error sending message:', data);
+      return NextResponse.json({ error: data }, { status: response.status });
     }
+
+    // Возвращаем ответ от API
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('Error sending message:', error);
-    
-    // Возвращаем пустой объект при ошибке
-    return NextResponse.json({}, { status: 500 });
+    console.error('Error in messages API:', error);
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
 
