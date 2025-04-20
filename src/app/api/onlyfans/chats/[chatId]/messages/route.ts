@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 // Константы для API
-const API_KEY = 'ofapi_p0wHp23pKLWlqemuMm4gQ2kIuXzqdkp34MYn0E9B081dedfb';
+const API_KEY = 'ofapi_wiBTRr5SQwG9WPCydWm6wQx5nhUbAN7ayXA21NH07dfd1f82';
 const ACCOUNT_ID = 'acct_601447d3a13342e0a0da8c16aa35ad07';
 
 export async function GET(
@@ -9,7 +9,6 @@ export async function GET(
   { params }: { params: { chatId: string } }
 ) {
   try {
-    debugger
     // Сохраняем chatId как строку и преобразуем в число только где необходимо
     const chatId = params.chatId;
     
@@ -117,6 +116,7 @@ export async function POST(
   { params }: { params: { chatId: string } }
 ) {
   try {
+    debugger
     console.log('POST запрос к API сообщений');
     // Сохраняем chatId как строку
     const chatId = params.chatId;
@@ -125,6 +125,7 @@ export async function POST(
     const jsonData = await request.json();
     const text = jsonData.text || '';
     
+    debugger
     // Отправляем сообщение через API OnlyFans
     const response = await fetch(
       `https://app.onlyfansapi.com/api/${ACCOUNT_ID}/chats/${chatId}/messages`,
@@ -140,6 +141,8 @@ export async function POST(
 
     const data = await response.json();
 
+    debugger
+    
     if (!response.ok) {
       console.error('Error sending message:', data);
       return NextResponse.json({ error: data }, { status: response.status });
@@ -172,6 +175,5 @@ function fixEscapedUrls(obj: any): any {
     }
     return result;
   }
-  
   return obj;
 } 
