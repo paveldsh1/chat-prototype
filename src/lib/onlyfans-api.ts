@@ -1,7 +1,3 @@
-const API_KEY = 'ofapi_ZaD54r2pLOoxX3THd4PaRNClJHGMutwNsf107iNN508c18f9';
-const ACCOUNT_ID = 'acct_601447d3a13342e0a0da8c16aa35ad07';
-const API_BASE_URL = 'https://onlyfansapi.com/api/v1';
-
 export interface Message {
   id: number;
   text: string;

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_KEY = 'ofapi_wiBTRr5SQwG9WPCydWm6wQx5nhUbAN7ayXA21NH07dfd1f82';
-const ACCOUNT_ID = 'acct_601447d3a13342e0a0da8c16aa35ad07';
-const API_BASE_URL = 'https://app.onlyfansapi.com/api';
+// Получаем API данные из переменных окружения
+const API_KEY = process.env.ONLYFANS_API_KEY;
+const ACCOUNT_ID = process.env.ONLYFANS_ACCOUNT_ID;
+const API_BASE_URL = process.env.ONLYFANS_API_BASE_URL || 'https://app.onlyfansapi.com/api';
 
 async function handler(
   req: NextRequest,
