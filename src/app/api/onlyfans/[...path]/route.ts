@@ -21,7 +21,6 @@ async function handler(
       });
 
       const data = await response.json();
-      debugger
       return NextResponse.json(data);
     } catch (error) {
       console.error('Auth Error:', error);
@@ -56,7 +55,6 @@ async function handler(
     });
 
     const data = await response.json();
-    debugger
 
     if (!response.ok) {
       return NextResponse.json(data, { status: response.status });
