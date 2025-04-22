@@ -189,13 +189,20 @@ export default function useMessages(selectedChat: number | null) {
               };
             });
             
-            // Прокручиваем чат вниз при новых сообщениях
+            // Проверяем, находится ли пользователь в нижней части чата
             setTimeout(() => {
               if (messagesContainerRef.current && messagesContainerRef.current.scrollHeight) {
-                messagesContainerRef.current.scrollTo({
-                  top: messagesContainerRef.current.scrollHeight,
-                  behavior: 'smooth'
-                });
+                // Определяем, находится ли пользователь близко к нижней части чата
+                const scrollPosition = messagesContainerRef.current.scrollHeight - messagesContainerRef.current.scrollTop;
+                const isNearBottom = scrollPosition <= messagesContainerRef.current.clientHeight + 100; // 100px запас
+                
+                // Прокручиваем только если пользователь находится близко к нижней части чата
+                if (isNearBottom) {
+                  messagesContainerRef.current.scrollTo({
+                    top: messagesContainerRef.current.scrollHeight,
+                    behavior: 'smooth'
+                  });
+                }
               }
             }, 100);
           }

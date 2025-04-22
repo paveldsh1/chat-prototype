@@ -139,12 +139,14 @@ const handleApiResponse = async <T>(response: Response): Promise<T> => {
 
 export async function checkAuth(): Promise<AccountInfo> {
   try {
+    debugger
     const response = await fetch('/api/onlyfans/me', {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
       }
     });
+    debugger
     return handleApiResponse<AccountInfo>(response);
   } catch (error) {
     console.error('Auth Error:', error);
@@ -194,7 +196,9 @@ function getUserDisplayName(fan: ChatResponse['fan']): string {
 }
 
 export async function getChats(): Promise<Chat[]> {
+  debugger
   const response = await fetch('/api/onlyfans/chats');
+  debugger
   const result = await handleApiResponse<ApiResponse<ChatResponse[]>>(response);
   
   // Проверяем структуру ответа
@@ -254,8 +258,9 @@ export async function getChatMessages(
   }
   
   try {
+    debugger
     const response = await fetch(`/api/onlyfans/chats/${chatId}/messages?${params.toString()}`);
-    
+    debugger
     if (!response.ok) {
       throw new Error(`Failed to fetch messages. Status: ${response.status}`);
     }
@@ -334,7 +339,7 @@ export async function sendMessage(chatId: string, text: string, options?: { pric
         body.isFree = options.isFree;
       }
     }
-    
+    debugger
     const response = await fetch(`/api/onlyfans/chats/${chatId}/messages`, {
       method: 'POST',
       headers: {
