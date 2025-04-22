@@ -1,8 +1,6 @@
 'use client';
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useEffect, useState } from "react";
-import LoadingSpinner from "@/components/LoadingSpinner";
 import { ChatSidebar, ChatHeader, MessageList, MessageInput } from "@/components/chat";
 import { useChats, useMessages, useMediaUpload, useMessageSender } from "@/hooks";
 
@@ -83,12 +81,12 @@ export default function Home() {
       
       // Если есть текстовое сообщение, отправляем его
       if (newMessage.trim()) {
-        await sendTextMessage(messagesContainerRef);
+        await sendTextMessage(messagesContainerRef as React.RefObject<HTMLDivElement>);
       }
       
       // Если выбран файл, отправляем его
       if (selectedFile) {
-        await sendMediaMessage(selectedChat.toString(), messagesContainerRef);
+        await sendMediaMessage(selectedChat.toString(), messagesContainerRef as React.RefObject<HTMLDivElement>);
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to send message');
@@ -171,7 +169,7 @@ export default function Home() {
           loadingMore={loadingMore}
           selectedChat={selectedChat}
           chats={chats}
-          messagesContainerRef={messagesContainerRef}
+          messagesContainerRef={messagesContainerRef as React.RefObject<HTMLDivElement>}
           onScroll={handleScroll}
         />
 

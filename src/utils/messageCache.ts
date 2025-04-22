@@ -1,5 +1,5 @@
 import { Message } from '@/lib/onlyfans-api';
-import { removeDuplicateMessages, sortMessagesByTimestamp } from './messageFormatters';
+import { sortMessagesByTimestamp } from './messageFormatters';
 
 /**
  * Обновляет кэш сообщений, добавляя новые сообщения и удаляя дубликаты

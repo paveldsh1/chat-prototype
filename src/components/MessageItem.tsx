@@ -1,6 +1,5 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ReactElement, useState } from 'react';
-import Image from 'next/image';
+import { useState } from 'react';
 import { CSSProperties } from 'react';
 
 // Стили для медиа-контейнеров

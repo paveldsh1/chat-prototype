@@ -32,7 +32,7 @@ export async function GET(
   { params }: { params: { chatId: string } }
 ) {
   try {
-    const chatId = params.chatId;
+    const { chatId } = await params;
     
     // Получаем параметры запроса
     const url = new URL(request.url);
@@ -139,7 +139,7 @@ export async function POST(
 ) {
   try {
     console.log('POST запрос к API сообщений');
-    const chatId = params.chatId;
+    const { chatId } = await params;
     
     // Определяем тип контента запроса
     const contentType = request.headers.get('Content-Type') || '';

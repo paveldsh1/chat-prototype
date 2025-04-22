@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Message, MessagePaginationResponse } from "@/lib/onlyfans-api";
+import { Message } from "@/lib/onlyfans-api";
 import { getChatMessages } from "@/lib/onlyfans-api";
 
 export default function useMessages(selectedChat: number | null) {
