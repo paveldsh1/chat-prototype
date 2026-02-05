@@ -12,6 +12,16 @@ A web client for reading and sending OnlyFans messages through a server-side pro
 - Media proxy with caching, timeouts, and retries
 - UI built on Radix/shadcn + Tailwind
 
+### Tech Stack
+- Next.js 15 (App Router) + React 19
+- TypeScript 5
+- Next.js API routes as BFF/proxy layer
+- Tailwind CSS 4 + PostCSS
+- Radix UI primitives (@radix-ui/react-avatar/scroll-area/separator/slot) + shadcn/ui components
+- Icons: Lucide, Heroicons
+- Utilities: clsx, class-variance-authority, tailwind-merge, tw-animate-css
+- Tooling: ESLint (eslint-config-next), Turbopack (next dev --turbopack), @types/*
+
 ### Demo
 ![Demo](docs/demo.gif)
 
@@ -130,6 +140,16 @@ docs/demo.gif
 - Локальный кэш сообщений и дедупликация
 - Прокси медиа с кэшированием, таймаутами и ретраями
 - UI на основе Radix/shadcn + Tailwind
+
+### Стек технологий
+- Next.js 15 (App Router) + React 19
+- TypeScript 5
+- API Routes в Next.js как BFF/прокси слой
+- Tailwind CSS 4 + PostCSS
+- Radix UI primitives (@radix-ui/react-avatar/scroll-area/separator/slot) + компоненты shadcn/ui
+- Иконки: Lucide, Heroicons
+- Утилиты: clsx, class-variance-authority, tailwind-merge, tw-animate-css
+- Инструменты: ESLint (eslint-config-next), Turbopack (next dev --turbopack), @types/*
 
 ### Демонстрация
 ![Demo](docs/demo.gif)
